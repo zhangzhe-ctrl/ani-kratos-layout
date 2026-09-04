@@ -59,6 +59,9 @@ func TestBuildAppRunsProductionComposition(t *testing.T) {
 	if !regexp.MustCompile(`"trace_id":"[0-9a-f]{32}"`).MatchString(logs.String()) {
 		t.Fatalf("request trace correlation missing from logs: %s", logs.String())
 	}
+	if !regexp.MustCompile(`"span_id":"[0-9a-f]{16}"`).MatchString(logs.String()) {
+		t.Fatalf("request span correlation missing from logs: %s", logs.String())
+	}
 }
 
 func TestBuildAppRejectsInvalidConfig(t *testing.T) {

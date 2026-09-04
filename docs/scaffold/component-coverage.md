@@ -43,7 +43,7 @@ frozen component to an executable probe or a retained source/dependency gate.
 | C32 | empty biz/data/service seams | exact-file gate permits only `README.md` and `doc.go`; biz import test remains | pass |
 | C33 | no layout runtime dependency | private layout renamed before generated service verification | pass |
 | C34 | deterministic provenance | two equal inputs yield equal Git trees including modes/types | pass |
-| C35 | exact ANI Go module path support | two distinct `github.com/zhangzhe-ctrl/<service>` inputs verified | pass |
+| C35 | exact ANI Go module path support | two distinct ordinary inputs plus collision-prone legal service name `go` verified | pass |
 | C36 | fail-closed generation | invalid/existing/dirty/detached/tool/error/interruption/race cases | pass |
 | C37 | pinned generation tools | module+version checks, observed hashes, and `@latest` rejection | pass |
 | C38 | generated-code reproducibility | source Proto is normalized, pinned Buf regenerates pb.go, and rerun yields the same tree | pass |

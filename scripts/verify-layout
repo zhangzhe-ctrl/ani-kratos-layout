@@ -66,7 +66,7 @@ layout_root=$temporary_root/layout-source
 [[ $(git -C "$layout_root" rev-parse --verify HEAD) == "$candidate_commit" ]] || \
   die "private verification layout does not match the candidate commit"
 
-for run in same-a same-b other invalid-a invalid-b invalid-c existing dirty detached \
+for run in same-a same-b other collision invalid-a invalid-b invalid-c existing dirty detached \
   mismatch mismatch-buf injected-error interrupted race; do
   mkdir -p "$temporary_root/$run"
 done
@@ -137,12 +137,16 @@ KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-b"
 KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/layout0-other-service --parent "$temporary_root/other"
+KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/go --parent "$temporary_root/collision"
 
 same_a=$temporary_root/same-a/layout0-smoke-service
 same_b=$temporary_root/same-b/layout0-smoke-service
 other=$temporary_root/other/layout0-other-service
+collision=$temporary_root/collision/go
 same_a_tree=$(snapshot_tree "$same_a")
 same_b_tree=$(snapshot_tree "$same_b")
+collision_tree=$(snapshot_tree "$collision")
 [[ $same_a_tree == "$same_b_tree" ]] || \
   die "same input did not produce identical Git trees including modes and types"
 
@@ -161,6 +165,20 @@ rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service' \
 [[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
 [[ ! -e $other/scripts/new-service && ! -e $other/scripts/verify-layout ]] || \
   die "layout-only scripts leaked into service"
+
+[[ $(awk '$1 == "module" {print $2; exit}' "$collision/go.mod") == \
+  "github.com/zhangzhe-ctrl/go" ]] || die "collision-prone module was not materialized"
+rg_quiet --fixed-strings '"go/parser"' "$collision/tests/runtime/runtime_test.go" || \
+  die "collision-prone generation rewrote go/parser"
+rg_quiet --fixed-strings '"go/token"' "$collision/tests/runtime/runtime_test.go" || \
+  die "collision-prone generation rewrote go/token"
+if rg_quiet --fixed-strings '"github.com/zhangzhe-ctrl/go/parser"' \
+  "$collision/tests/runtime/runtime_test.go"; then
+  die "collision-prone generation treated go/parser as an owned import"
+fi
+rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/go/internal/conf/v1' \
+  "$collision/internal/conf/v1/conf.proto" || \
+  die "collision-prone module Proto option was not normalized"
 
 expect_failure() {
   local label=$1
@@ -329,9 +347,16 @@ mv --no-target-directory -- "$layout_root" "$hidden_layout"
   cd "$same_a"
   GOWORK=off make BUF="$buf_bin" verify
 )
+(
+  cd "$collision"
+  GOWORK=off make BUF="$buf_bin" verify
+)
 same_a_after_tree=$(snapshot_tree "$same_a")
 [[ $same_a_tree == "$same_a_after_tree" ]] || \
   die "generated service verification changed its source tree"
+collision_after_tree=$(snapshot_tree "$collision")
+[[ $collision_tree == "$collision_after_tree" ]] || \
+  die "collision-prone service verification changed its source tree"
 
 if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$same_a"; then

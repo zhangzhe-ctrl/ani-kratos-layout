@@ -109,6 +109,9 @@ func TestRuntimeLifecycle(t *testing.T) {
 	if !regexp.MustCompile(`"trace_id":"[0-9a-f]{32}"`).MatchString(logOutput.String()) {
 		t.Fatalf("Kratos tracing middleware did not correlate request log: %s", logOutput.String())
 	}
+	if !regexp.MustCompile(`"span_id":"[0-9a-f]{16}"`).MatchString(logOutput.String()) {
+		t.Fatalf("Kratos tracing middleware did not correlate request span: %s", logOutput.String())
+	}
 }
 
 func TestAdminReadinessUsesKratosErrorEncoding(t *testing.T) {

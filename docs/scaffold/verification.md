@@ -61,7 +61,7 @@ scripts/verify-layout /home/chabking/go/bin/kratos .tools/bin/buf
 | V12 | executable policy scan found no moving `@latest`, Todo, Wire, Ent, AIP, business API, workspace, submodule, or replace residue in active source/build paths | pass |
 | V13 | `go mod tidy -diff`, `go mod verify`, the 11-entry direct graph, and the denied-family scan matched [dependency-baseline.md](dependency-baseline.md) | pass |
 | V14 | two equal module inputs produced equal Git tree IDs, including file modes and object types | pass |
-| V15 | a second exact-form ANI module produced the expected module, imports, Proto option, command directory, README, CI, and provenance | pass |
+| V15 | a second exact-form ANI module produced the expected module, imports, Proto option, command directory, README, CI, and provenance; collision-prone legal service name `go` preserved `go/parser` and `go/token` while normalizing owned imports | pass |
 | V16 | the private layout checkout was renamed out of reach before the generated service ran `make verify`; it still passed | pass |
 | V17 | generated repositories retained service README/AGENTS/runtime docs/CI/provenance and omitted layout-only wrapper, templates, evidence, and workflow | pass |
 

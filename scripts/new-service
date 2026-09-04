@@ -239,10 +239,16 @@ rm -f -- \
   "$generated/.github/workflows/layout.yml"
 
 (cd "$generated" && go mod edit -module "$module")
-collect_rg_files "$scratch/import-files" --fixed-strings "$service/" \
+# The official generator rewrites this layout's module to the service basename.
+# Rewrite only imports/go_package values that point at the layout-owned internal
+# tree. A bare "$service/" replacement would corrupt standard-library imports
+# for valid names such as "go" (for example, go/parser and go/token).
+old_owned_prefix="\"$service/internal/"
+new_owned_prefix="\"$module/internal/"
+collect_rg_files "$scratch/import-files" --fixed-strings "$old_owned_prefix" \
   --glob '*.go' --glob '*.proto' --glob '!**/*.pb.go' "$generated"
 while IFS= read -r -d '' file; do
-  sed -i "s|$service/|$module/|g" "$file"
+  sed -i "s|$old_owned_prefix|$new_owned_prefix|g" "$file"
 done <"$scratch/import-files"
 collect_rg_files "$scratch/name-files" --hidden --fixed-strings 'ani-service-template' \
   --glob '!.git/**' --glob '!**/*.pb.go' "$generated"
