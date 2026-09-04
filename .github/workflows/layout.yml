@@ -1,4 +1,4 @@
-name: ci
+name: layout
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  generation:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -17,8 +17,10 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install pinned tools
-        run: make tools supply-chain-tools
-      - name: Verify
+        run: |
+          make tools
+          GOBIN="$PWD/.tools/bin" go install github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00
+      - name: Verify layout source
         run: make verify
-      - name: Vulnerability scan
-        run: make vuln
+      - name: Verify generated repositories
+        run: ./scripts/verify-layout .tools/bin/kratos .tools/bin/buf

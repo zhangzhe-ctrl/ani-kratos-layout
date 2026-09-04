@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+die() {
+  printf 'verify-layout: %s\n' "$*" >&2
+  exit 1
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+  die "sha256sum or shasum is required"
+}
+
+rg_quiet() {
+  local rg_status
+  set +e
+  rg --quiet "$@"
+  rg_status=$?
+  set -e
+  case $rg_status in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) die "rg failed during layout verification (status $rg_status)" ;;
+  esac
+}
+
+[[ $# -eq 2 ]] || die "usage: scripts/verify-layout <kratos-bin> <buf-bin>"
+kratos_bin=$1
+buf_bin=$2
+[[ -x $kratos_bin ]] || die "kratos CLI is not executable"
+[[ -x $buf_bin ]] || die "buf is not executable"
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+layout_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
+  die "layout is not a Git checkout"
+layout_state=$(git -C "$layout_root" status --porcelain --untracked-files=all) || \
+  die "cannot inspect layout status"
+[[ -z $layout_state ]] || die "layout must be clean"
+
+temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/ani-layout-verify.XXXXXX")
+cleanup() {
+  if [[ -n ${temporary_root:-} && -d $temporary_root ]]; then
+    case $temporary_root in
+      "${TMPDIR:-/tmp}/ani-layout-verify."*) rm -rf -- "$temporary_root" ;;
+      *) printf 'verify-layout: refusing unexpected cleanup path: %s\n' "$temporary_root" >&2 ;;
+    esac
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for run in same-a same-b other invalid-a invalid-b invalid-c existing dirty detached mismatch; do
+  mkdir -p "$temporary_root/$run"
+done
+
+KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-a"
+KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-b"
+KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-other-service --parent "$temporary_root/other"
+
+write_manifest() {
+  local source_root=$1
+  local output_file=$2
+  local file_list=$output_file.files
+  find "$source_root" -type f -not -path "$source_root/.git/*" -print0 >"$file_list"
+  : >"$output_file"
+  while IFS= read -r -d '' file; do
+    relative_path=${file#"$source_root/"}
+    [[ $relative_path != *$'\n'* ]] || die "newline in generated path is unsupported"
+    printf '%s  %s\n' "$(sha256_file "$file")" "$relative_path" >>"$output_file"
+  done <"$file_list"
+  LC_ALL=C sort -o "$output_file" "$output_file"
+  rm -f -- "$file_list"
+}
+
+same_a=$temporary_root/same-a/layout0-smoke-service
+same_b=$temporary_root/same-b/layout0-smoke-service
+other=$temporary_root/other/layout0-other-service
+write_manifest "$same_a" "$temporary_root/same-a.manifest"
+write_manifest "$same_b" "$temporary_root/same-b.manifest"
+cmp --silent "$temporary_root/same-a.manifest" "$temporary_root/same-b.manifest" || \
+  die "same input did not produce byte-identical trees"
+
+[[ $(awk '$1 == "module" {print $2; exit}' "$other/go.mod") == \
+  "github.com/zhangzhe-ctrl/layout0-other-service" ]] || die "second module was not materialized"
+[[ -f $other/cmd/layout0-other-service/main.go ]] || die "second command was not renamed"
+[[ -f $other/docs/scaffold/provenance.md ]] || die "generation provenance is missing"
+[[ -f $other/.github/workflows/ci.yml ]] || die "service CI is missing"
+[[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
+[[ ! -e $other/scripts/new-service && ! -e $other/scripts/verify-layout ]] || \
+  die "layout-only scripts leaked into service"
+
+expect_failure() {
+  local label=$1
+  shift
+  local status
+  set +e
+  "$@" >"$temporary_root/$label.log" 2>&1
+  status=$?
+  set -e
+  [[ $status -ne 0 ]] || die "$label unexpectedly succeeded"
+}
+
+expect_failure invalid-a env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  foo/bar --parent "$temporary_root/invalid-a"
+expect_failure invalid-b env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com./owner/bad-service --parent "$temporary_root/invalid-b"
+expect_failure invalid-c env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/Bad-Service --parent "$temporary_root/invalid-c"
+[[ ! -e $temporary_root/invalid-a/bar ]] || die "invalid module left a destination"
+[[ ! -e $temporary_root/invalid-b/bad-service ]] || die "invalid host left a destination"
+[[ ! -e $temporary_root/invalid-c/Bad-Service ]] || die "invalid service name left a destination"
+
+existing_target=$temporary_root/existing/existing-service
+mkdir -p "$existing_target"
+printf 'do not overwrite\n' >"$existing_target/sentinel"
+sentinel_hash=$(sha256_file "$existing_target/sentinel")
+expect_failure existing env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/existing-service --parent "$temporary_root/existing"
+[[ $(sha256_file "$existing_target/sentinel") == "$sentinel_hash" ]] || \
+  die "existing destination was modified"
+[[ $(find "$existing_target" -mindepth 1 -maxdepth 1 -type f | wc -l) -eq 1 ]] || \
+  die "existing destination gained files"
+
+git clone --quiet "file://$layout_root" "$temporary_root/dirty/layout"
+printf 'dirty\n' >"$temporary_root/dirty/layout/dirty-probe"
+mkdir -p "$temporary_root/dirty/output"
+expect_failure dirty env KRATOS_BIN="$kratos_bin" \
+  "$temporary_root/dirty/layout/scripts/new-service" \
+  github.com/zhangzhe-ctrl/dirty-service --parent "$temporary_root/dirty/output"
+[[ ! -e $temporary_root/dirty/output/dirty-service ]] || die "dirty layout left a destination"
+
+git clone --quiet "file://$layout_root" "$temporary_root/detached/layout"
+git -C "$temporary_root/detached/layout" checkout --quiet --detach
+mkdir -p "$temporary_root/detached/output"
+expect_failure detached env KRATOS_BIN="$kratos_bin" \
+  "$temporary_root/detached/layout/scripts/new-service" \
+  github.com/zhangzhe-ctrl/detached-service --parent "$temporary_root/detached/output"
+[[ ! -e $temporary_root/detached/output/detached-service ]] || die "detached layout left a destination"
+
+expect_failure mismatch env KRATOS_BIN=/bin/true "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/mismatch-service --parent "$temporary_root/mismatch"
+[[ ! -e $temporary_root/mismatch/mismatch-service ]] || die "tool mismatch left a destination"
+
+printf '\033[31mERROR: simulated official CLI failure\033[m\n' >"$temporary_root/ansi-error.log"
+expect_failure ansi-error "$layout_root/scripts/check-generator-result" 0 "$temporary_root/ansi-error.log"
+printf 'official generator completed\n' >"$temporary_root/clean-generator.log"
+"$layout_root/scripts/check-generator-result" 0 "$temporary_root/clean-generator.log"
+
+(
+  cd "$same_a"
+  GOWORK=off make BUF="$buf_bin" verify
+)
+write_manifest "$same_a" "$temporary_root/same-a.after-verify.manifest"
+cmp --silent "$temporary_root/same-a.manifest" "$temporary_root/same-a.after-verify.manifest" || \
+  die "generated service verification changed its source tree"
+
+if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+  'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$same_a"; then
+  die "generated service retains layout identity"
+fi
+if rg_quiet '^[[:space:]]*replace([[:space:](]|$)' "$same_a/go.mod"; then
+  die "generated service contains a replace directive"
+fi
+[[ ! -e $same_a/go.work && ! -e $same_a/.gitmodules ]] || \
+  die "generated service contains a workspace or submodule dependency"
+
+printf 'layout generation verification passed\n'

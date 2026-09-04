@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+die() {
+  printf 'check-generator-result: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 2 ]] || die "usage: scripts/check-generator-result <exit-status> <log-file>"
+generator_status=$1
+generator_log=$2
+[[ $generator_status =~ ^[0-9]+$ ]] || die "exit status must be numeric"
+[[ -f $generator_log ]] || die "generator log is missing"
+
+if [[ $generator_status -ne 0 ]]; then
+  sed -n '1,200p' "$generator_log" >&2
+  die "official kratos generator exited with status $generator_status"
+fi
+
+set +e
+rg --quiet --fixed-strings 'ERROR:' "$generator_log"
+rg_status=$?
+set -e
+case $rg_status in
+  0)
+    sed -n '1,200p' "$generator_log" >&2
+    die "official kratos generator reported an error"
+    ;;
+  1) exit 0 ;;
+  *) die "cannot inspect official kratos generator output (rg status $rg_status)" ;;
+esac

@@ -33,11 +33,18 @@ func main() {
 	flag.Parse()
 	logger := newRuntimeLogger(os.Stdout)
 	log.SetDefault(logger)
+	if err := run(logger); err != nil {
+		logger.Error("service terminated", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(logger *slog.Logger) error {
 	undoMaxProcs, err := maxprocs.Set(maxprocs.Logger(func(format string, args ...interface{}) {
 		log.Info("runtime CPU quota", "detail", fmt.Sprintf(format, args...))
 	}))
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("configure runtime CPU quota: %w", err)
 	}
 	defer undoMaxProcs()
 
@@ -47,20 +54,21 @@ func main() {
 	))
 	defer c.Close()
 	if err := c.Load(); err != nil {
-		panic(err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	var bc conf.Bootstrap
 	if err := c.Scan(&bc); err != nil {
-		panic(err)
+		return fmt.Errorf("scan config: %w", err)
 	}
 	app, err := buildApp(&bc, logger)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("build app: %w", err)
 	}
 	if err := app.Run(); err != nil {
-		panic(err)
+		return fmt.Errorf("run app: %w", err)
 	}
+	return nil
 }
 
 func newRuntimeLogger(writer io.Writer) *slog.Logger {

@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+.SHELLFLAGS := -Eeuo pipefail -c
 
 GO ?= go
 TOOLS_DIR := $(CURDIR)/.tools/bin
@@ -14,23 +15,32 @@ SERVICE_NAME ?= ani-service-template
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.Name=$(SERVICE_NAME) -X main.Version=$(VERSION)
 
-.PHONY: tools supply-chain-tools config generate build test verify vuln sbom clean help
+.PHONY: tools check-buf supply-chain-tools check-govulncheck check-cyclonedx config generate build test verify vuln sbom clean help
 
-tools: $(BUF)
+tools: check-buf
 
 $(BUF):
 	mkdir -p $(TOOLS_DIR)
 	GOBIN=$(TOOLS_DIR) $(GO) install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 
-supply-chain-tools: $(GOVULNCHECK) $(CYCLONEDX_GOMOD)
+check-buf: $(BUF)
+	test "$$($(BUF) --version)" = "$(patsubst v%,%,$(BUF_VERSION))"
+
+supply-chain-tools: check-govulncheck check-cyclonedx
 
 $(GOVULNCHECK):
 	mkdir -p $(TOOLS_DIR)
 	GOBIN=$(TOOLS_DIR) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
+check-govulncheck: $(GOVULNCHECK)
+	$(GOVULNCHECK) -version | grep --fixed-strings --line-regexp "Scanner: govulncheck@$(GOVULNCHECK_VERSION)"
+
 $(CYCLONEDX_GOMOD):
 	mkdir -p $(TOOLS_DIR)
 	GOBIN=$(TOOLS_DIR) $(GO) install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
+
+check-cyclonedx: $(CYCLONEDX_GOMOD)
+	test "$$($(CYCLONEDX_GOMOD) version | awk -F '\t' '$$1 == "Version:" {print $$2}')" = "$(CYCLONEDX_GOMOD_VERSION)"
 
 config: $(BUF)
 	$(BUF) lint
@@ -39,7 +49,7 @@ config: $(BUF)
 
 generate: config
 	$(GO) generate ./...
-	gofmt -w $$(find . -name '*.go' -not -path './.git/*' -not -path './.tools/*')
+	find . -type f -name '*.go' -not -path './.git/*' -not -path './.tools/*' -print0 | xargs -0 --no-run-if-empty gofmt -w
 
 build:
 	mkdir -p bin
@@ -48,17 +58,8 @@ build:
 test:
 	$(GO) test -count=1 ./...
 
-verify: $(BUF)
-	@before=$$(sha256sum internal/conf/v1/conf.pb.go); \
-		$(MAKE) --no-print-directory config >/dev/null; \
-		after=$$(sha256sum internal/conf/v1/conf.pb.go); \
-		test "$$before" = "$$after" || { echo "generated config is stale" >&2; exit 1; }
-	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*' -not -path './.tools/*'))" || { \
-		echo "gofmt check failed" >&2; \
-		gofmt -l $$(find . -name '*.go' -not -path './.git/*' -not -path './.tools/*'); \
-		exit 1; \
-	}
-	$(GO) generate ./...
+verify: check-buf
+	./scripts/verify-source $(BUF)
 	$(GO) mod tidy -diff
 	$(GO) test -count=1 ./...
 	$(GO) vet ./...
@@ -66,12 +67,11 @@ verify: $(BUF)
 	$(GO) mod verify
 	git diff --check
 
-vuln: $(GOVULNCHECK)
+vuln: check-govulncheck
 	$(GOVULNCHECK) -show verbose ./...
 
-sbom: $(CYCLONEDX_GOMOD)
-	$(CYCLONEDX_GOMOD) mod -json -noserial -notimestamp -licenses -assert-licenses \
-		-output docs/scaffold/bom.cdx.json
+sbom: check-cyclonedx
+	./scripts/generate-sbom $(CYCLONEDX_GOMOD)
 
 clean:
 	rm -rf bin .tools .work .tmp

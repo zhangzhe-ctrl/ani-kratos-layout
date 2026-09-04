@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+die() {
+  printf 'generate-sbom: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || die "usage: scripts/generate-sbom <cyclonedx-gomod>"
+tool_path=$1
+[[ -x $tool_path ]] || die "cyclonedx-gomod is not executable: $tool_path"
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+repository_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
+  die "repository is not a Git checkout"
+repository_commit=$(git -C "$repository_root" rev-parse --verify HEAD 2>/dev/null) || \
+  die "repository has no committed revision"
+repository_state=$(git -C "$repository_root" status --porcelain --untracked-files=all) || \
+  die "cannot inspect repository state"
+[[ -z $repository_state ]] || die "repository must be clean before SBOM generation"
+
+output_path=$repository_root/docs/scaffold/bom.cdx.json
+output_dir=$(dirname "$output_path")
+mkdir -p "$output_dir"
+
+temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/ani-sbom.XXXXXX")
+staged_output=
+cleanup() {
+  if [[ -n ${staged_output:-} && -f $staged_output ]]; then
+    rm -f -- "$staged_output"
+  fi
+  if [[ -n ${temporary_root:-} && -d $temporary_root ]]; then
+    case $temporary_root in
+      "${TMPDIR:-/tmp}/ani-sbom."*) rm -rf -- "$temporary_root" ;;
+      *) printf 'generate-sbom: refusing unexpected cleanup path: %s\n' "$temporary_root" >&2 ;;
+    esac
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+export_root=$temporary_root/source
+mkdir -p "$export_root"
+git -C "$repository_root" archive --format=tar "$repository_commit" | tar -xf - -C "$export_root"
+
+raw_output=$temporary_root/bom.cdx.json
+(
+  cd "$export_root"
+  "$tool_path" mod -json -noserial -notimestamp -licenses -assert-licenses -output "$raw_output"
+)
+
+staged_output=$(mktemp "$output_dir/.bom.cdx.json.XXXXXX")
+cp "$raw_output" "$staged_output"
+chmod 0644 "$staged_output"
+mv -- "$staged_output" "$output_path"
+staged_output=
+printf 'generated %s from commit %s\n' "$output_path" "$repository_commit"

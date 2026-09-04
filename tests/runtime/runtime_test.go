@@ -3,6 +3,9 @@ package runtime_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"go/parser"
+	"go/token"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,7 +14,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,13 +26,17 @@ import (
 	"github.com/go-kratos/kratos/v3/config/env"
 	"github.com/go-kratos/kratos/v3/config/file"
 	kratoslog "github.com/go-kratos/kratos/v3/log"
+	kratosmetadata "github.com/go-kratos/kratos/v3/metadata"
+	kratosgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	grpcmetadata "google.golang.org/grpc/metadata"
 	reflectionv1 "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	conf "github.com/zhangzhe-ctrl/ani-kratos-layout/internal/conf/v1"
 	serverpkg "github.com/zhangzhe-ctrl/ani-kratos-layout/internal/server"
@@ -44,6 +53,8 @@ func TestRuntimeLifecycle(t *testing.T) {
 	}
 	middlewares := observability.ServerMiddleware(logger)
 	grpcServer := serverpkg.NewGRPCServer(cfg.Server.Grpc, middlewares...)
+	fixture := &runtimeFixture{}
+	registerRuntimeFixture(grpcServer, fixture)
 	adminServer := serverpkg.NewAdminServer(cfg.Server.Admin, readiness, observability.Gatherer(), middlewares...)
 	grpcEndpoint, err := grpcServer.Endpoint()
 	if err != nil {
@@ -73,6 +84,7 @@ func TestRuntimeLifecycle(t *testing.T) {
 	assertAdminEndpoint(t, adminEndpoint.Host, "/metrics", http.StatusOK, "server_requests_code_total")
 	assertGRPCHealth(t, grpcEndpoint.Host)
 	assertGRPCReflectionDisabled(t, grpcEndpoint.Host)
+	assertGRPCMiddleware(t, grpcEndpoint.Host, fixture)
 
 	if err := app.Stop(); err != nil {
 		t.Fatalf("Stop() error = %v", err)
@@ -120,6 +132,8 @@ func TestAdminReadinessUsesKratosErrorEncoding(t *testing.T) {
 }
 
 func TestCommittedConfigLoadsAsGeneratedType(t *testing.T) {
+	t.Setenv("ANI_SERVER_GRPC_ADDR", "127.0.0.1:29090")
+	t.Setenv("ANI_SERVER_ADMIN_ADDR", "127.0.0.1:29091")
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot resolve test path")
@@ -137,6 +151,9 @@ func TestCommittedConfigLoadsAsGeneratedType(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("config Validate(%s) error = %v", configPath, err)
 	}
+	if cfg.Server.Grpc.Addr != "127.0.0.1:29090" || cfg.Server.Admin.Addr != "127.0.0.1:29091" {
+		t.Fatalf("environment override not applied: grpc=%q admin=%q", cfg.Server.Grpc.Addr, cfg.Server.Admin.Addr)
+	}
 }
 
 func TestBizLayerHasNoFrameworkOrAdapterImports(t *testing.T) {
@@ -146,17 +163,24 @@ func TestBizLayerHasNoFrameworkOrAdapterImports(t *testing.T) {
 	}
 	bizRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", "internal", "biz"))
 	forbidden := []string{"go-kratos", "protobuf", "grpc", "internal/data", "database/sql", "pgx", "redis"}
+	fileSet := token.NewFileSet()
 	err := filepath.WalkDir(bizRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
 			return err
 		}
-		contents, err := os.ReadFile(path)
+		parsed, err := parser.ParseFile(fileSet, path, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
 		}
-		for _, needle := range forbidden {
-			if strings.Contains(string(contents), `"`+needle) {
-				t.Errorf("%s imports forbidden dependency containing %q", path, needle)
+		for _, imported := range parsed.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				return err
+			}
+			for _, needle := range forbidden {
+				if strings.Contains(importPath, needle) {
+					t.Errorf("%s imports forbidden dependency %q", path, importPath)
+				}
 			}
 		}
 		return nil
@@ -239,12 +263,92 @@ func assertGRPCReflectionDisabled(t *testing.T, addr string) {
 	}
 	if err := stream.Send(&reflectionv1.ServerReflectionRequest{
 		MessageRequest: &reflectionv1.ServerReflectionRequest_ListServices{ListServices: ""},
-	}); err != nil {
+	}); err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("send reflection request: %v", err)
 	}
 	_, err = stream.Recv()
 	if status.Code(err) != codes.Unimplemented {
 		t.Fatalf("reflection status = %v, want %v", status.Code(err), codes.Unimplemented)
+	}
+}
+
+type runtimeFixtureServer interface {
+	Check(context.Context, *conf.Bootstrap) (*emptypb.Empty, error)
+}
+
+type runtimeFixture struct {
+	calls atomic.Int32
+}
+
+func (f *runtimeFixture) Check(ctx context.Context, _ *conf.Bootstrap) (*emptypb.Empty, error) {
+	md, ok := kratosmetadata.FromServerContext(ctx)
+	if !ok || md.Get("x-md-layout-caller") != "runtime-test" {
+		return nil, errors.New("Kratos metadata middleware did not propagate x-md-layout-caller")
+	}
+	if md.Get("x-md-layout-panic") == "true" {
+		panic("gRPC recovery middleware test")
+	}
+	f.calls.Add(1)
+	return &emptypb.Empty{}, nil
+}
+
+func registerRuntimeFixture(server *kratosgrpc.Server, fixture runtimeFixtureServer) {
+	server.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "ani.layout.test.RuntimeFixture",
+		HandlerType: (*runtimeFixtureServer)(nil),
+		Methods: []grpc.MethodDesc{{
+			MethodName: "Check",
+			Handler: func(service any, ctx context.Context, decode func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+				request := new(conf.Bootstrap)
+				if err := decode(request); err != nil {
+					return nil, err
+				}
+				if interceptor == nil {
+					return service.(runtimeFixtureServer).Check(ctx, request)
+				}
+				info := &grpc.UnaryServerInfo{Server: service, FullMethod: "/ani.layout.test.RuntimeFixture/Check"}
+				handler := func(ctx context.Context, request any) (any, error) {
+					return service.(runtimeFixtureServer).Check(ctx, request.(*conf.Bootstrap))
+				}
+				return interceptor(ctx, request, info, handler)
+			},
+		}},
+	}, fixture)
+}
+
+func assertGRPCMiddleware(t *testing.T, addr string, fixture *runtimeFixture) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	connection, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("dial gRPC middleware fixture: %v", err)
+	}
+	defer connection.Close()
+
+	valid := &conf.Bootstrap{Server: &conf.Server{
+		Grpc:            &conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:19090", Timeout: durationpb.New(time.Second)},
+		Admin:           &conf.Server_Admin{Network: "tcp", Addr: "127.0.0.1:19091", Timeout: durationpb.New(time.Second)},
+		ShutdownTimeout: durationpb.New(time.Second),
+	}}
+	metadataContext := grpcmetadata.AppendToOutgoingContext(ctx, "x-md-layout-caller", "runtime-test")
+	if err := connection.Invoke(metadataContext, "/ani.layout.test.RuntimeFixture/Check", valid, &emptypb.Empty{}); err != nil {
+		t.Fatalf("metadata middleware request: %v", err)
+	}
+	if fixture.calls.Load() != 1 {
+		t.Fatalf("fixture calls after valid request = %d", fixture.calls.Load())
+	}
+
+	if err := connection.Invoke(metadataContext, "/ani.layout.test.RuntimeFixture/Check", &conf.Bootstrap{}, &emptypb.Empty{}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("validation middleware status = %v, want %v", status.Code(err), codes.InvalidArgument)
+	}
+	if fixture.calls.Load() != 1 {
+		t.Fatal("validation middleware called the handler")
+	}
+
+	panicContext := grpcmetadata.AppendToOutgoingContext(metadataContext, "x-md-layout-panic", "true")
+	if err := connection.Invoke(panicContext, "/ani.layout.test.RuntimeFixture/Check", valid, &emptypb.Empty{}); status.Code(err) != codes.Internal {
+		t.Fatalf("recovery middleware status = %v, want %v", status.Code(err), codes.Internal)
 	}
 }
 

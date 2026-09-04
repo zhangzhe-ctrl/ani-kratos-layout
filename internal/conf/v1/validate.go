@@ -25,11 +25,10 @@ func (c *Bootstrap) Validate() error {
 	if err := validateListener("admin", c.Server.Admin.Network, c.Server.Admin.Addr, c.Server.Admin.Timeout); err != nil {
 		return err
 	}
-	if c.Server.Grpc.Addr == c.Server.Admin.Addr {
-		_, port, _ := net.SplitHostPort(c.Server.Grpc.Addr)
-		if port != "0" {
-			return fmt.Errorf("grpc and admin listeners must use distinct addresses")
-		}
+	_, grpcPort, _ := net.SplitHostPort(c.Server.Grpc.Addr)
+	_, adminPort, _ := net.SplitHostPort(c.Server.Admin.Addr)
+	if grpcPort == adminPort {
+		return fmt.Errorf("grpc and admin listeners must use distinct ports")
 	}
 	return validateDuration("shutdown", c.Server.ShutdownTimeout, maximumTimeout)
 }

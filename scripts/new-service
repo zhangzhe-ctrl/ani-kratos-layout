@@ -5,6 +5,8 @@ readonly PINNED_KRATOS_VERSION="kratos version v3.0.0"
 readonly PINNED_KRATOS_MODULE="github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00"
 readonly UPSTREAM_LAYOUT_TAG="v3.0.0"
 readonly UPSTREAM_LAYOUT_COMMIT="94dbfcc4264a6be8e7b6c4929923c1e1f738b980"
+readonly MODULE_PREFIX="github.com/zhangzhe-ctrl/"
+readonly GENERATOR_BRANCH="layout-input"
 
 usage() {
   cat <<'EOF'
@@ -33,6 +35,33 @@ sha256_file() {
   die "sha256sum or shasum is required"
 }
 
+rg_quiet() {
+  local rg_status
+  set +e
+  rg --quiet "$@"
+  rg_status=$?
+  set -e
+  case $rg_status in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) die "rg failed while validating generated output (status $rg_status)" ;;
+  esac
+}
+
+collect_rg_files() {
+  local output_file=$1
+  shift
+  local rg_status
+  set +e
+  rg --files-with-matches --null "$@" >"$output_file"
+  rg_status=$?
+  set -e
+  case $rg_status in
+    0 | 1) return 0 ;;
+    *) die "rg failed while selecting generated files (status $rg_status)" ;;
+  esac
+}
+
 [[ $# -gt 0 ]] || { usage >&2; exit 2; }
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   usage
@@ -55,9 +84,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ $module =~ ^[A-Za-z0-9][A-Za-z0-9.-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+$ ]] || \
-  die "module path must be a fully-qualified Go module path"
-[[ $module != *".."* ]] || die "module path must not contain '..'"
+[[ $module =~ ^github\.com/zhangzhe-ctrl/[a-z0-9][a-z0-9-]*$ ]] || \
+  die "module path must match ${MODULE_PREFIX}<lowercase-service-name>"
 service=${module##*/}
 [[ $service =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
   die "service name must contain only lowercase letters, digits, and hyphens"
@@ -77,67 +105,134 @@ layout_branch=$(git -C "$layout_root" symbolic-ref --quiet --short HEAD 2>/dev/n
   die "layout checkout must be on a symbolic branch"
 layout_commit=$(git -C "$layout_root" rev-parse --verify HEAD 2>/dev/null) || \
   die "layout checkout has no commit"
-[[ -z $(git -C "$layout_root" status --porcelain --untracked-files=all) ]] || \
-  die "layout checkout must be clean"
+layout_status=$(git -C "$layout_root" status --porcelain --untracked-files=all) || \
+  die "cannot inspect layout checkout status"
+[[ -z $layout_status ]] || die "layout checkout must be clean"
 
 kratos_bin=${KRATOS_BIN:-}
 if [[ -z $kratos_bin ]]; then
-  kratos_bin=$(command -v kratos 2>/dev/null || true)
+  set +e
+  kratos_bin=$(command -v kratos 2>/dev/null)
+  command_status=$?
+  set -e
+  [[ $command_status -eq 0 ]] || kratos_bin=
 fi
 [[ -n $kratos_bin && -x $kratos_bin ]] || die "pinned kratos CLI is required"
 actual_version=$("$kratos_bin" -v 2>&1) || die "cannot read kratos CLI version"
 [[ $actual_version == "$PINNED_KRATOS_VERSION" ]] || \
   die "kratos CLI version mismatch: got '$actual_version'"
-actual_module=$(go version -m "$kratos_bin" | awk '$1 == "mod" {print $2 "@" $3; exit}')
+actual_module=$(go version -m "$kratos_bin" | awk '$1 == "mod" {print $2 "@" $3; exit}') || \
+  die "cannot inspect kratos CLI module"
 [[ $actual_module == "$PINNED_KRATOS_MODULE" ]] || \
   die "kratos CLI module mismatch: got '$actual_module'"
 kratos_sha256=$(sha256_file "$kratos_bin")
 
 scratch=$(mktemp -d "$parent/.${service}.ani-layout.XXXXXX")
+user_home_dir=$(cd ~ && pwd -P)
+cache_parent=$user_home_dir/.kratos/repo/$(basename "$scratch")
+cache_checkout=$cache_parent/layout-source@$GENERATOR_BRANCH
+cache_owned=0
+
 cleanup() {
-  [[ -n ${scratch:-} && -d $scratch ]] && rm -rf -- "$scratch"
+  if [[ ${cache_owned:-0} -eq 1 && -n ${cache_parent:-} && -d $cache_parent ]]; then
+    case $cache_parent in
+      "$user_home_dir/.kratos/repo/.${service}.ani-layout."*) rm -rf -- "$cache_parent" ;;
+      *) printf 'new-service: refusing unexpected cache cleanup path: %s\n' "$cache_parent" >&2 ;;
+    esac
+  fi
+  if [[ -n ${scratch:-} && -d $scratch ]]; then
+    case $scratch in
+      "$parent/.${service}.ani-layout."*) rm -rf -- "$scratch" ;;
+      *) printf 'new-service: refusing unexpected scratch cleanup path: %s\n' "$scratch" >&2 ;;
+    esac
+  fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[[ ! -e $cache_parent && ! -L $cache_parent ]] || die "private Kratos cache path already exists"
+mkdir -p "$cache_parent" || die "cannot create private Kratos cache namespace"
+cache_owned=1
+source_checkout=$scratch/layout-source
+git clone --quiet --single-branch --branch "$layout_branch" "file://$layout_root" "$source_checkout" || \
+  die "cannot create immutable layout source checkout"
+git -C "$source_checkout" branch --move "$GENERATOR_BRANCH" || \
+  die "cannot normalize the private generator branch"
+source_commit=$(git -C "$source_checkout" rev-parse --verify HEAD) || \
+  die "cannot inspect layout source commit"
+source_status=$(git -C "$source_checkout" status --porcelain --untracked-files=all) || \
+  die "cannot inspect layout source status"
+[[ $source_commit == "$layout_commit" && -z $source_status ]] || \
+  die "layout source checkout does not match the clean candidate commit"
+
 generated=$scratch/$service
 generator_log=$scratch/kratos-new.log
-
 set +e
 "$kratos_bin" new "$generated" \
-  --repo "file://$layout_root" \
+  --repo "file://$source_checkout" \
+  --branch "$GENERATOR_BRANCH" \
   --timeout 120s >"$generator_log" 2>&1
 generator_status=$?
 set -e
-if [[ $generator_status -ne 0 ]] || rg --quiet '(^|[[:space:]])ERROR([:[:space:]]|$)' "$generator_log"; then
-  sed -n '1,200p' "$generator_log" >&2
+"$source_checkout/scripts/check-generator-result" "$generator_status" "$generator_log" || \
   die "official kratos generator failed"
-fi
+
+cache_commit=$(git -C "$cache_checkout" rev-parse --verify HEAD 2>/dev/null) || \
+  die "cannot inspect private Kratos cache commit"
+cache_branch=$(git -C "$cache_checkout" symbolic-ref --quiet --short HEAD 2>/dev/null) || \
+  die "private Kratos cache is detached"
+cache_status=$(git -C "$cache_checkout" status --porcelain --untracked-files=all) || \
+  die "cannot inspect private Kratos cache status"
+cache_origin=$(git -C "$cache_checkout" remote get-url origin) || \
+  die "cannot inspect private Kratos cache origin"
+[[ $cache_commit == "$layout_commit" && $cache_branch == "$GENERATOR_BRANCH" && -z $cache_status ]] || \
+  die "private Kratos cache does not match the layout candidate"
+[[ $cache_origin == "file://$source_checkout" ]] || die "private Kratos cache origin mismatch"
+
+layout_commit_after=$(git -C "$layout_root" rev-parse --verify HEAD) || \
+  die "cannot re-check layout commit"
+layout_status_after=$(git -C "$layout_root" status --porcelain --untracked-files=all) || \
+  die "cannot re-check layout status"
+[[ $layout_commit_after == "$layout_commit" ]] || die "layout commit changed during generation"
+[[ -z $layout_status_after ]] || die "layout checkout changed during generation"
 [[ -f $generated/go.mod ]] || die "generator did not create go.mod"
 
 generated_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
 [[ $generated_module == "$service" ]] || \
   die "unexpected module emitted by kratos CLI: $generated_module"
 
-# The pinned CLI intentionally excludes .github. Restore the template CI before
-# removing layout-only material.
-cp -R "$layout_root/.github" "$generated/.github"
+# The pinned CLI intentionally excludes .github. Restore it from the immutable
+# source checkout before removing layout-only material.
+cp -R "$source_checkout/.github" "$generated/.github"
 cp "$generated/templates/service/README.md" "$generated/README.md"
 cp "$generated/templates/service/AGENTS.md" "$generated/AGENTS.md"
-rm -rf -- "$generated/templates" "$generated/scripts" "$generated/docs/scaffold"
-rm -f -- "$generated/docs/LAYOUT-0.md"
+rm -rf -- "$generated/templates" "$generated/docs/scaffold"
+rm -f -- \
+  "$generated/docs/LAYOUT-0.md" \
+  "$generated/scripts/check-generator-result" \
+  "$generated/scripts/new-service" \
+  "$generated/scripts/verify-layout" \
+  "$generated/.github/workflows/layout.yml"
 
 (cd "$generated" && go mod edit -module "$module")
+collect_rg_files "$scratch/import-files" --fixed-strings "$service/" \
+  --glob '*.go' --glob '*.proto' "$generated"
 while IFS= read -r -d '' file; do
   sed -i "s|$service/|$module/|g" "$file"
-done < <(rg --files-with-matches --null --fixed-strings "$service/" "$generated" \
-  --glob '*.go' --glob '*.proto' || true)
+done <"$scratch/import-files"
+collect_rg_files "$scratch/name-files" --hidden --fixed-strings 'ani-service-template' \
+  --glob '!.git/**' "$generated"
 while IFS= read -r -d '' file; do
   sed -i "s|ani-service-template|$service|g" "$file"
-done < <(rg --files-with-matches --null --hidden --fixed-strings 'ani-service-template' "$generated" \
-  --glob '!.git/**' || true)
+done <"$scratch/name-files"
+collect_rg_files "$scratch/module-files" --hidden --fixed-strings '__SERVICE_MODULE__' \
+  --glob '!.git/**' "$generated"
 while IFS= read -r -d '' file; do
   sed -i "s|__SERVICE_MODULE__|$module|g" "$file"
-done < <(rg --files-with-matches --null --hidden --fixed-strings '__SERVICE_MODULE__' "$generated" \
-  --glob '!.git/**' || true)
+done <"$scratch/module-files"
+sed -i "s|cmd/server|cmd/$service|g" \
+  "$generated/docs/runtime.md" "$generated/docs/runtime-verification.md"
 
 mkdir -p "$generated/docs/scaffold"
 {
@@ -157,23 +252,26 @@ mkdir -p "$generated/docs/scaffold"
 
 [[ -f $generated/cmd/$service/main.go ]] || die "generated command was not renamed"
 [[ -f $generated/.github/workflows/ci.yml ]] || die "generated CI workflow is missing"
-[[ $(awk '$1 == "module" {print $2; exit}' "$generated/go.mod") == "$module" ]] || \
-  die "generated module path was not normalized"
-if rg --quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+normalized_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
+[[ $normalized_module == "$module" ]] || die "generated module path was not normalized"
+if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated"; then
+  rg --line-number --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+    'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated" >&2
   die "generated service contains template identity"
 fi
-if rg --quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
+if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
   die "generated service contains example Todo content"
 fi
 [[ ! -e $generated/go.work && ! -e $generated/.gitmodules ]] || \
   die "generated service contains a workspace or submodule binding"
-if rg --quiet '^[[:space:]]*replace([[:space:](]|$)' "$generated/go.mod"; then
+if rg_quiet '^[[:space:]]*replace([[:space:](]|$)' "$generated/go.mod"; then
   die "generated go.mod contains a replace directive"
 fi
 
 git -C "$generated" init --quiet --initial-branch=main
-[[ -z $(git -C "$generated" remote) ]] || die "generated repository unexpectedly has a remote"
+generated_remotes=$(git -C "$generated" remote) || die "cannot inspect generated Git remotes"
+[[ -z $generated_remotes ]] || die "generated repository unexpectedly has a remote"
 [[ ! -e $target && ! -L $target ]] || die "target appeared during generation: $target"
 mv -- "$generated" "$target"
 printf 'created %s at %s\n' "$module" "$target"

@@ -1,6 +1,6 @@
 # Generic Runtime Contract
 
-- Status: **FROZEN TARGET; implementation verification pending**
+- Status: **FROZEN CONTRACT**
 - Scope: runtime shell emitted by LAYOUT-0
 
 This is the minimum runtime contract shared by newly generated ANI services.
@@ -31,7 +31,7 @@ to the service deployment, not to the template default.
 - supported network value is `tcp`;
 - listener addresses must use a literal loopback or unspecified IP plus a valid
   non-zero port;
-- gRPC and admin must not resolve to the same non-zero listener address; and
+- gRPC and admin must use distinct non-zero ports; and
 - timeout values must be positive and bounded by the validation contract.
 
 No database, message broker, cache, identity endpoint, or provider configuration
@@ -113,9 +113,9 @@ dependency-specific probes below the explicit composition root. The empty
 seams, not permission boundaries and not a mandate to reproduce ANI's historical
 Core/Service split.
 
-## Current verification state
+## Verification boundary
 
-All runtime behavior in this document is **not_verified** until the matching
-source exists and the local gates in [scaffold/verification.md](scaffold/verification.md)
-have executed against the candidate revision. The contract text alone is not
-runtime evidence.
+The executable local checks are described in
+[runtime-verification.md](runtime-verification.md). The layout release records
+its own acceptance evidence separately; each generated service must record its
+own results. Contract text alone is not runtime evidence.

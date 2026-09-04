@@ -35,6 +35,10 @@ func TestBootstrapValidate(t *testing.T) {
 			c.Server.Grpc.Addr = "127.0.0.1:19090"
 			c.Server.Admin.Addr = "127.0.0.1:19090"
 		}},
+		{name: "wildcard conflicts with loopback port", mutate: func(c *Bootstrap) {
+			c.Server.Grpc.Addr = "0.0.0.0:19090"
+			c.Server.Admin.Addr = "127.0.0.1:19090"
+		}},
 		{name: "missing shutdown timeout", mutate: func(c *Bootstrap) { c.Server.ShutdownTimeout = nil }},
 	}
 
