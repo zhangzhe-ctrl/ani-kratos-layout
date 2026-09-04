@@ -298,14 +298,28 @@ mkdir -p "$generated/docs/scaffold"
 [[ ! -e $generated/LICENSE ]] || die "generated service must choose its own project license"
 normalized_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
 [[ $normalized_module == "$module" ]] || die "generated module path was not normalized"
-if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
-  'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated"; then
-  rg --line-number --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
-    'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated" >&2
-  die "generated service contains template identity"
+
+reject_generated_residue() {
+  local needle=$1
+  if rg_quiet --hidden --fixed-strings --glob '!**/.git/**' \
+    --glob '!**/docs/scaffold/provenance.md' "$needle" "$generated"; then
+    rg --line-number --hidden --fixed-strings --glob '!**/.git/**' \
+      --glob '!**/docs/scaffold/provenance.md' "$needle" "$generated" >&2
+    die "generated service contains template residue: $needle"
+  fi
+}
+
+reject_generated_residue '__SERVICE_MODULE__'
+if [[ $module != "github.com/zhangzhe-ctrl/ani-kratos-layout" ]]; then
+  reject_generated_residue 'github.com/zhangzhe-ctrl/ani-kratos-layout'
 fi
-if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
-  die "generated service contains example Todo content"
+if [[ $service != "ani-service-template" ]]; then
+  reject_generated_residue 'ani-service-template'
+fi
+[[ ! -d $generated/api ]] || die "generated service contains a sample business API"
+if rg_quiet --line-number --glob '*.go' --glob '*.proto' \
+  'api/todo/|Todo(Service|Request|Reply)|NewTodo' "$generated"; then
+  die "generated service contains the removed Todo sample domain"
 fi
 [[ ! -e $generated/go.work && ! -e $generated/.gitmodules ]] || \
   die "generated service contains a workspace or submodule binding"

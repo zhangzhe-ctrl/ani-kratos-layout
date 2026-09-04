@@ -72,15 +72,17 @@ for run in same-a same-b other collision invalid-a invalid-b invalid-c existing 
 done
 
 assert_layout_policy() {
-  local module_graph direct_graph
-  if rg_quiet --hidden --line-number '@latest' \
+  local module_graph direct_graph moving_version
+  moving_version='@la''test'
+  if (cd "$layout_root" && rg_quiet --hidden --line-number "$moving_version" \
     --glob 'Makefile' --glob '*.yaml' --glob '*.yml' --glob 'scripts/**' \
-    --glob '!docs/**' "$layout_root"; then
-    die "layout source/build files contain a moving @latest tool"
+    --glob '!docs/**' .); then
+    die "layout source/build files contain a moving tool version"
   fi
-  if rg_quiet --hidden --line-number --ignore-case '\b(todo|wire|ent|aip)\b' \
+  if (cd "$layout_root" && rg_quiet --hidden --line-number --ignore-case \
+    '\b(todo|wire|ent|aip)\b' \
     --glob '*.go' --glob '*.proto' --glob 'go.mod' --glob 'configs/**' \
-    --glob '!docs/**' "$layout_root"; then
+    --glob '!docs/**' .); then
     die "layout runtime contains a removed sample or generator family"
   fi
   [[ ! -e $layout_root/go.work && ! -e $layout_root/.gitmodules ]] || \
@@ -139,6 +141,24 @@ KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/layout0-other-service --parent "$temporary_root/other"
 KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/go --parent "$temporary_root/collision"
+
+edge_names=(ani-service-template ani-kratos-layout todo ani-todo-service)
+edge_repositories=()
+edge_trees=()
+for edge_name in "${edge_names[@]}"; do
+  edge_parent=$temporary_root/edge-$edge_name
+  mkdir -p "$edge_parent"
+  KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+    "github.com/zhangzhe-ctrl/$edge_name" --parent "$edge_parent"
+  edge_repository=$edge_parent/$edge_name
+  [[ $(awk '$1 == "module" {print $2; exit}' "$edge_repository/go.mod") == \
+    "github.com/zhangzhe-ctrl/$edge_name" ]] || \
+    die "edge-name module was not materialized: $edge_name"
+  [[ -f $edge_repository/cmd/$edge_name/main.go ]] || \
+    die "edge-name command was not materialized: $edge_name"
+  edge_repositories+=("$edge_repository")
+  edge_trees+=("$(snapshot_tree "$edge_repository")")
+done
 
 same_a=$temporary_root/same-a/layout0-smoke-service
 same_b=$temporary_root/same-b/layout0-smoke-service
@@ -366,6 +386,16 @@ same_a_after_tree=$(snapshot_tree "$same_a")
 collision_after_tree=$(snapshot_tree "$collision")
 [[ $collision_tree == "$collision_after_tree" ]] || \
   die "collision-prone service verification changed its source tree"
+for edge_index in "${!edge_repositories[@]}"; do
+  edge_repository=${edge_repositories[$edge_index]}
+  (
+    cd "$edge_repository"
+    GOWORK=off make BUF="$buf_bin" verify
+  )
+  edge_after_tree=$(snapshot_tree "$edge_repository")
+  [[ ${edge_trees[$edge_index]} == "$edge_after_tree" ]] || \
+    die "edge-name service verification changed its source tree: ${edge_names[$edge_index]}"
+done
 
 if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$same_a"; then

@@ -50,7 +50,8 @@ contract.
 4. Review the full upstream-to-ANI delta; do not carry changes through an opaque
    copy operation.
 5. Run generation twice with the same module, once with a different module, and
-   once with a legal name that can collide with language/library paths.
+   with legal names that can collide with language/library paths, template
+   identity, layout identity, or retired sample terminology.
 6. Exercise invalid module, existing destination, target-appearance race, dirty
    and detached layout, tool mismatch, generator-diagnostic, and interruption
    paths.
