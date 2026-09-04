@@ -10,6 +10,9 @@ CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod
 BUF_VERSION := v1.60.0
 GOVULNCHECK_VERSION := v1.7.0
 CYCLONEDX_GOMOD_VERSION := v1.12.0
+BUF_MODULE := github.com/bufbuild/buf@$(BUF_VERSION)
+GOVULNCHECK_MODULE := golang.org/x/vuln@$(GOVULNCHECK_VERSION)
+CYCLONEDX_GOMOD_MODULE := github.com/CycloneDX/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
 
 SERVICE_NAME ?= ani-service-template
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -25,6 +28,7 @@ $(BUF):
 
 check-buf: $(BUF)
 	test "$$($(BUF) --version)" = "$(patsubst v%,%,$(BUF_VERSION))"
+	test "$$(go version -m $(BUF) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(BUF_MODULE)"
 
 supply-chain-tools: check-govulncheck check-cyclonedx
 
@@ -34,6 +38,7 @@ $(GOVULNCHECK):
 
 check-govulncheck: $(GOVULNCHECK)
 	$(GOVULNCHECK) -version | grep --fixed-strings --line-regexp "Scanner: govulncheck@$(GOVULNCHECK_VERSION)"
+	test "$$(go version -m $(GOVULNCHECK) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(GOVULNCHECK_MODULE)"
 
 $(CYCLONEDX_GOMOD):
 	mkdir -p $(TOOLS_DIR)
@@ -41,6 +46,7 @@ $(CYCLONEDX_GOMOD):
 
 check-cyclonedx: $(CYCLONEDX_GOMOD)
 	test "$$($(CYCLONEDX_GOMOD) version | awk -F '\t' '$$1 == "Version:" {print $$2}')" = "$(CYCLONEDX_GOMOD_VERSION)"
+	test "$$(go version -m $(CYCLONEDX_GOMOD) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(CYCLONEDX_GOMOD_MODULE)"
 
 config: $(BUF)
 	$(BUF) lint

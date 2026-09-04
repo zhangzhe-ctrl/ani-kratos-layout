@@ -89,6 +89,12 @@ assert_layout_policy() {
     die "layout go.mod contains a replace directive"
   fi
   [[ ! -d $layout_root/api ]] || die "layout contains a business API directory"
+  for seam in biz data service; do
+    seam_files=$(find "$layout_root/internal/$seam" -mindepth 1 -maxdepth 1 -type f \
+      -printf '%f\n' | LC_ALL=C sort)
+    [[ $seam_files == $'README.md\ndoc.go' ]] || \
+      die "internal/$seam contains more than the frozen empty extension seam"
+  done
 
   module_graph=$temporary_root/go-list-m-all.txt
   direct_graph=$temporary_root/go-list-direct.txt
@@ -149,6 +155,9 @@ rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service' \
   "$other/README.md" || die "second module README was not normalized"
 [[ -f $other/docs/scaffold/provenance.md ]] || die "generation provenance is missing"
 [[ -f $other/.github/workflows/ci.yml ]] || die "service CI is missing"
+[[ -f $other/THIRD_PARTY_NOTICES.go-kratos-layout.txt ]] || \
+  die "service upstream notice is missing"
+[[ ! -e $other/LICENSE ]] || die "service unexpectedly inherited a project license"
 [[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
 [[ ! -e $other/scripts/new-service && ! -e $other/scripts/verify-layout ]] || \
   die "layout-only scripts leaked into service"

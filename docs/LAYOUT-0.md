@@ -24,13 +24,17 @@ plane, or deployment-time dependency.
 official `kratos new` CLI and only fills gaps required for an auditable ANI
 service creation flow:
 
-1. validate the requested full Go module path and refuse an existing target;
+1. validate an exact ANI Go module path of the form
+   `github.com/zhangzhe-ctrl/<lowercase-service-name>` and refuse an existing
+   target;
 2. require the layout checkout and generator identity expected by this release;
 3. generate in a private temporary directory and fail closed on CLI errors;
-4. convert the generated basename module to the requested full module path;
+4. convert the generated basename module to the requested ANI module path and
+   regenerate typed configuration with the pinned Buf/Protobuf pipeline;
 5. restore repository files intentionally omitted by `kratos new`, including CI;
 6. write deterministic generation provenance; and
-7. move the complete result into place atomically.
+7. use a no-clobber, no-target-directory move and verify ownership before
+   reporting successful materialization.
 
 The wrapper must not grow into a second framework, dependency manager, domain
 generator, deployment system, or policy engine.
@@ -88,8 +92,9 @@ Kubernetes client, notification channel, or deployment opinion.
 
 1. The official CLI remains the generator engine; ANI owns only the thin wrapper
    and layout contents.
-2. Generator, upstream layout, Go module dependencies, and generation plugins
-   are pinned to auditable versions or immutable commits.
+2. Generator, Buf, upstream layout, Go module dependencies, and generation
+   plugins are pinned to auditable source versions or immutable commits;
+   platform-specific binary hashes are recorded as evidence.
 3. Generation never overwrites an existing destination and never leaves a
    partially generated destination on failure.
 4. A generated service has no Go, filesystem, or runtime dependency on
@@ -101,6 +106,8 @@ Kubernetes client, notification channel, or deployment opinion.
 7. Business APIs and adapters are created by the service, not guessed by the
    layout.
 8. Template upgrades never rewrite generated services automatically.
+9. The upstream MIT notice is preserved, but the layout does not silently pick
+   a project license for ANI-authored code or a generated service.
 
 ## Evidence model
 

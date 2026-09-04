@@ -17,7 +17,21 @@
 | builder reported by `go version -m` | `go1.26.7-X:nodwarf5` |
 
 The supported version flag is `-v`; `kratos version` is not a valid command for
-this binary.
+this binary. The wrapper enforces the reported version and exact Go module
+pseudo-version. The binary hash is retained as local evidence rather than
+misrepresented as portable across builders and platforms.
+
+## Typed-configuration generator identity
+
+| Field | Observed value |
+| --- | --- |
+| Buf version | `1.60.0` |
+| Buf Go module | `github.com/bufbuild/buf@v1.60.0` |
+| Buf SHA-256 | `d931e6035fa4a101f6da4aeeeefcf72ea9478e08b6cc9a707d0e407bd5caee51` |
+| Protobuf Go plugin | `google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11` |
+
+The wrapper edits the source Proto option and ordinary Go imports, never the
+encoded bytes in `*.pb.go`, then regenerates through this pinned pipeline.
 
 ## Official layout identity
 

@@ -20,5 +20,9 @@ jobs:
         run: make tools supply-chain-tools
       - name: Verify
         run: make verify
-      - name: Vulnerability scan
-        run: make vuln
+      - name: Supply-chain verification
+        run: |
+          make vuln
+          make sbom
+          git diff --exit-code -- docs/scaffold/bom.cdx.json
+          test -z "$(git status --porcelain --untracked-files=all -- docs/scaffold/bom.cdx.json)"

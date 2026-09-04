@@ -1,60 +1,71 @@
 # Runtime Component Coverage Matrix
 
 - Contract source: [../runtime.md](../runtime.md)
-- Candidate revision: **not yet recorded**
-- Overall status: **not_verified**
+- Candidate identity: local tag `layout-0-candidate`
+- Local technical status: **pass**
 
-Every row is required for LAYOUT-0 unless explicitly marked as a policy-only
-row. Source presence is necessary but does not prove runtime behavior.
+Source presence is not treated as runtime evidence. The rows below link each
+frozen component to an executable probe or a retained source/dependency gate.
 
-| ID | Component or invariant | Expected implementation seam | Required evidence | Status |
-| --- | --- | --- | --- | --- |
-| C01 | typed file configuration | `internal/conf/v1/conf.proto`, `cmd/server/main.go` | generated-code diff clean; config load test | not_verified |
-| C02 | `ANI` environment overrides | `cmd/server/main.go` | isolated env override test | not_verified |
-| C03 | configuration validation | `internal/conf/v1/validate.go` | table tests for valid and invalid networks, IPs, ports, duplicate listeners, and timeouts | not_verified |
-| C04 | safe local listener defaults | `configs/config.yaml` | parse/validate test; static assertion for loopback addresses | not_verified |
-| C05 | explicit composition root | `cmd/server/app.go` | source review; build without Wire | not_verified |
-| C06 | Kratos application lifecycle | `cmd/server/app.go`, `cmd/server/main.go` | process start and signal-stop test | not_verified |
-| C07 | structured JSON logger | `cmd/server/main.go` | log decode test with required service fields | not_verified |
-| C08 | trace/span correlation fields | logger construction and tracing middleware | request test with trace context | not_verified |
-| C09 | sensitive-log filtering seam | logger construction | source assertion and focused test where feasible | not_verified |
-| C10 | `automaxprocs` logger bridge | `cmd/server/main.go` | source/build assertion | not_verified |
-| C11 | gRPC server | `internal/server/grpc.go` | socket-level health probe | not_verified |
-| C12 | standard gRPC health service | `internal/server/grpc.go` | health `Check` returns serving after startup | not_verified |
-| C13 | reflection disabled by default | `internal/server/grpc.go` | reflection request fails with expected status | not_verified |
-| C14 | middleware: recovery | gRPC server construction | panic-path focused test or static constructor assertion | not_verified |
-| C15 | middleware: metadata | gRPC server construction | metadata propagation test | not_verified |
-| C16 | middleware: tracing | gRPC server construction | span/request test | not_verified |
-| C17 | middleware: logging | gRPC server construction | request log assertion | not_verified |
-| C18 | middleware: metrics | gRPC server construction | request increments exposed metric | not_verified |
-| C19 | middleware: validation | gRPC server construction | invalid request rejected before handler work | not_verified |
-| C20 | frozen middleware order | gRPC server construction | constructor/source contract test | not_verified |
-| C21 | Kratos error/codec boundary | gRPC and admin construction | error encoding/content-type test | not_verified |
-| C22 | admin HTTP server | `internal/server/admin.go` | real listener probe | not_verified |
-| C23 | `/healthz` | admin route | HTTP status/body test | not_verified |
-| C24 | `/readyz` process lifecycle | `internal/server/readiness.go`, admin route | pre-run/run/stopping state test | not_verified |
-| C25 | process-only readiness semantics | runtime docs and readiness implementation | source/test assertion; no dependency claims | not_verified |
-| C26 | `/metrics` | `internal/server/observability.go`, admin route | Prometheus text-format probe | not_verified |
-| C27 | `ani_runtime_ready` gauge | observability/readiness | metric sample changes with lifecycle | not_verified |
-| C28 | OpenTelemetry lifecycle | observability construction and cleanup | initialization/shutdown test without external collector claim | not_verified |
-| C29 | graceful shutdown timeout | config and application lifecycle | signal-stop deadline test | not_verified |
-| C30 | no business API | repository paths and dependency graph | forbidden-path/symbol scan | not_verified |
-| C31 | no DB/broker/cache/provider default | `go.mod`, config, source tree | dependency and config scan | not_verified |
-| C32 | empty biz/data/service extension seams | `internal/biz`, `internal/data`, `internal/service` | source scan and build | not_verified |
-| C33 | no shared layout runtime dependency | generated `go.mod` and imports | isolated generated-service build after hiding layout checkout | not_verified |
-| C34 | deterministic provenance | `scripts/new-service` | two same-input generations compare byte-for-byte, excluding `.git` | not_verified |
-| C35 | full Go module path support | `scripts/new-service` | generate at least two distinct full module paths and inspect module/imports | not_verified |
-| C36 | fail-closed destination handling | `scripts/new-service` | existing target, invalid module, dirty layout, generator mismatch, and simulated CLI error tests | not_verified |
-| C37 | pinned generation tools | Makefile and Buf configuration | static scan rejects `@latest`; tool identity evidence | not_verified |
-| C38 | generated-code reproducibility | Buf configuration and generated protobuf | regenerate and require clean Git diff | not_verified |
+| ID | Component or invariant | Retained evidence | Status |
+| --- | --- | --- | --- |
+| C01 | typed file configuration | Buf regeneration and `TestCommittedConfigLoadsAsGeneratedType` | pass |
+| C02 | `ANI` environment overrides | `TestCommittedConfigLoadsAsGeneratedType` and independent command test | pass |
+| C03 | configuration validation | table tests cover missing objects, networks, IPv4/IPv6 literals, ports, numeric-equivalent conflicts, malformed/zero/negative/oversized durations | pass |
+| C04 | safe local listener defaults | committed config parse plus validation; defaults are `127.0.0.1` | pass |
+| C05 | explicit composition root | `cmd/server/app.go`; Wire/source policy scan | pass |
+| C06 | Kratos application lifecycle | production `buildApp` test and independent process signal test | pass |
+| C07 | structured JSON logger | JSON decode asserts timestamp, caller, service id/name/version | pass |
+| C08 | trace/span correlation fields | production request log and middleware fixture | pass |
+| C09 | sensitive-log filtering seam | focused Kratos FilterKey redaction test | pass |
+| C10 | `automaxprocs` logger bridge | production command source/build and shared logger path | pass |
+| C11 | gRPC server | real loopback listener probes | pass |
+| C12 | standard gRPC health | health `Check` returns `SERVING` | pass |
+| C13 | reflection disabled | reflection request returns `Unimplemented` | pass |
+| C14 | recovery middleware | test-only RPC panic becomes gRPC `Internal` | pass |
+| C15 | metadata middleware | test-only RPC receives `x-md-layout-caller` through Kratos metadata | pass |
+| C16 | tracing middleware | request log contains non-empty trace/span identifiers | pass |
+| C17 | logging middleware | request emits Kratos `server request` JSON record | pass |
+| C18 | metrics middleware | request counter appears in Prometheus exposition | pass |
+| C19 | validation middleware | invalid request is rejected before fixture call count changes | pass |
+| C20 | frozen middleware order | literal constructor review plus combined recovery/metadata/tracing/logging/metrics/validation execution | pass |
+| C21 | Kratos error/codec boundary | admin not-ready error and gRPC statuses use Kratos transport encoding | pass |
+| C22 | admin HTTP server | real loopback listener probe | pass |
+| C23 | `/healthz` | status, JSON body, and content type assertions | pass |
+| C24 | `/readyz` lifecycle | false/running/stopping/stopped states asserted | pass |
+| C25 | process-only readiness semantics | implementation has no dependency probe and runtime contract states the limit | pass |
+| C26 | `/metrics` | Prometheus text exposition probe | pass |
+| C27 | `ani_runtime_ready` gauge | gauge `0 -> 1 -> 0` asserted | pass |
+| C28 | OpenTelemetry lifecycle | in-memory providers initialize and shut down through app hooks | pass |
+| C29 | graceful shutdown timeout | command configured for 2 seconds exits inside 4-second outer bound and closes listener | pass |
+| C30 | no business API | executable source/path scan rejects Todo and any `api/` directory | pass |
+| C31 | no DB/broker/cache/provider default | direct/full module graph and denied-family scan | pass |
+| C32 | empty biz/data/service seams | exact-file gate permits only `README.md` and `doc.go`; biz import test remains | pass |
+| C33 | no layout runtime dependency | private layout renamed before generated service verification | pass |
+| C34 | deterministic provenance | two equal inputs yield equal Git trees including modes/types | pass |
+| C35 | exact ANI Go module path support | two distinct `github.com/zhangzhe-ctrl/<service>` inputs verified | pass |
+| C36 | fail-closed generation | invalid/existing/dirty/detached/tool/error/interruption/race cases | pass |
+| C37 | pinned generation tools | module+version checks, observed hashes, and `@latest` rejection | pass |
+| C38 | generated-code reproducibility | source Proto is normalized, pinned Buf regenerates pb.go, and rerun yields the same tree | pass |
 
-## Coverage rule
+## Components deliberately absent from LAYOUT-0
 
-LAYOUT-0 runtime coverage is `pass` only when every C01–C38 row is either:
+These are not silently omitted. They are service/domain or deployment choices
+and therefore are not applicable to the generic shell.
 
-- supported by retained evidence and marked `pass`; or
-- explicitly removed from the frozen L1–L4 contract by a reviewed decision.
+| Component | LAYOUT-0 status | Reason |
+| --- | --- | --- |
+| registry and service discovery | not_applicable | there is no deployment topology or service-to-service endpoint yet |
+| generated outbound clients | not_applicable | no external contract exists before a vertical slice |
+| authentication and authorization | not_applicable | identity semantics belong to IAM and the consuming service contract |
+| rate limit, retry, and circuit breaker | not_applicable | no business method or downstream dependency exists to classify |
+| TLS, mTLS, and workload identity | not_applicable | production trust and certificate ownership are not frozen here |
+| pprof | not_applicable | no exposure/auth policy is defined; adding it by default would create an admin surface |
+| external trace/log/metric exporter | not_applicable | only local instrumentation and Prometheus exposition are proven |
+| remote configuration center | not_applicable | typed file/env config is the only frozen local input |
+| database, cache, queue, and worker | not_applicable | transaction, delivery, and task semantics belong to a real domain slice |
+| container, Kubernetes, Helm, release | not_applicable | packaging and deployment are explicitly deferred |
 
-An endpoint returning HTTP 200 alone does not establish the middleware,
-telemetry, readiness semantics, graceful shutdown, or generated-repository
-independence rows.
+No `not_applicable` row is evidence that the component will never be needed.
+The owning service must introduce and test it when a concrete vertical slice
+requires it.

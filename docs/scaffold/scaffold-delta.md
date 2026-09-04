@@ -1,133 +1,125 @@
 # Complete Scaffold Delta
 
 - Comparison base: `4af0617138aa0fb10a4495ccd05c234da12aaf63`
-- Target: LAYOUT-0 candidate
-- Current execution state: **not_verified**
+- Target identity: local tag `layout-0-candidate`
+- Reconciliation result: **pass**
 
-This inventory accounts for every file in the 40-file official generated
-baseline and every planned LAYOUT-0 addition. “Target action” is the frozen
-design; it is not evidence that the action has occurred. The final verifier must
-compare the candidate revision to the baseline and update the result only after
-the assertions run.
+The base is the unmodified 40-file output of the pinned official generator.
+Every base path and every LAYOUT-0-only addition is accounted for below.
 
-## Repository and build files
+## Official baseline paths
 
-| Baseline path | Target action | Reason | Status |
-| --- | --- | --- | --- |
-| `.gitattributes` | rewrite | remove Wire/Ent generated-code assumptions; retain only attributes used by this layout | not_verified |
-| `.gitignore` | rewrite | ignore deterministic local build, tool, cache, and temporary output | not_verified |
-| `AGENTS.md` | rewrite | keep service-local, concise instructions; remove an inherited second governance system | not_verified |
-| `CLAUDE.md` | delete | avoid duplicated tool-specific governance in every generated service | not_verified |
-| `Dockerfile` | delete/defer | image policy and base-image lifecycle are not frozen in LAYOUT-0 | not_verified |
-| `LICENSE` | preserve | retain upstream MIT license and attribution | not_verified |
-| `Makefile` | rewrite | add pinned, reproducible generate/test/vet/build/verify/vulnerability/SBOM targets; remove `@latest` | not_verified |
-| `README.md` | rewrite | explain layout consumption and generated-service ownership | not_verified |
-| `buf.gen.config.yaml` | delete | converge on one config-generation entry point | not_verified |
-| `buf.gen.yaml` | rewrite | generate only the generic typed configuration with a pinned plugin | not_verified |
-| `buf.lock` | delete unless a declared remote module requires it | avoid retaining Todo-era remote dependency state | not_verified |
-| `buf.yaml` | rewrite | scope lint/build to LAYOUT-0 protobuf inputs | not_verified |
-| `go.mod` | rewrite | use the ANI layout module and reviewed runtime pins; remove Todo, AIP, and Wire dependencies | not_verified |
-| `go.sum` | regenerate from `go.mod` | make the checksum set a consequence of the frozen dependency graph | not_verified |
-| `openapi.yaml` | delete | it describes the upstream Todo API; LAYOUT-0 has no business HTTP API | not_verified |
-
-## Upstream Todo API
-
-All six paths are deleted because a reusable runtime template must not prescribe
-a business domain:
-
-| Baseline path | Target action | Status |
+| Baseline path | Final action | Reason |
 | --- | --- | --- |
-| `api/todo/v1/error_reason.pb.go` | delete | not_verified |
-| `api/todo/v1/error_reason.proto` | delete | not_verified |
-| `api/todo/v1/todo.pb.go` | delete | not_verified |
-| `api/todo/v1/todo.proto` | delete | not_verified |
-| `api/todo/v1/todo_grpc.pb.go` | delete | not_verified |
-| `api/todo/v1/todo_http.pb.go` | delete | not_verified |
+| `.gitattributes` | rewrite | retain only attributes used by this layout |
+| `.gitignore` | rewrite | ignore task-owned build, tool, and cache output |
+| `AGENTS.md` | rewrite | concise service-local ownership rules |
+| `CLAUDE.md` | delete | do not copy a second tool-specific governance system |
+| `Dockerfile` | delete/defer | image policy is outside LAYOUT-0 |
+| `LICENSE` | rename to `THIRD_PARTY_NOTICES.go-kratos-layout.txt` | retain upstream MIT notice without selecting a license for ANI-authored or generated-service code |
+| `Makefile` | rewrite | pinned generate/test/vet/build/vulnerability/SBOM gates |
+| `README.md` | rewrite | layout interface, ownership, and limits |
+| `buf.gen.config.yaml` | delete | one config-generation entry point |
+| `buf.gen.yaml` | rewrite | pinned typed-config generator only |
+| `buf.lock` | delete | no remote Buf module remains |
+| `buf.yaml` | rewrite | only `internal/` typed config input |
+| `go.mod` | rewrite | reviewed Kratos runtime graph; no sample domain/DI stack |
+| `go.sum` | regenerate | checksum consequence of the frozen graph |
+| `openapi.yaml` | delete | it described the Todo sample |
 
-## Composition root
+All six `api/todo/v1/*` files are deleted. LAYOUT-0 defines no business API.
 
-| Baseline path | Target action | Status |
+| Baseline path | Final action |
+| --- | --- |
+| `api/todo/v1/error_reason.pb.go` | delete |
+| `api/todo/v1/error_reason.proto` | delete |
+| `api/todo/v1/todo.pb.go` | delete |
+| `api/todo/v1/todo.proto` | delete |
+| `api/todo/v1/todo_grpc.pb.go` | delete |
+| `api/todo/v1/todo_http.pb.go` | delete |
+
+| Baseline composition/config path | Final action |
+| --- | --- |
+| `cmd/ani-kratos-layout-layout0/main.go` | replace with `cmd/server/main.go` plus explicit `app.go` |
+| `cmd/ani-kratos-layout-layout0/wire.go` | delete |
+| `cmd/ani-kratos-layout-layout0/wire_gen.go` | delete |
+| `configs/config.yaml` | replace sample/data settings with safe local runtime defaults |
+| `internal/conf/conf.proto` | replace with versioned `internal/conf/v1/conf.proto` |
+| `internal/conf/conf.pb.go` | replace with pinned generated `internal/conf/v1/conf.pb.go` |
+
+| Baseline seam path | Final action |
+| --- | --- |
+| `internal/biz/README.md` | preserve minimal navigation heading |
+| `internal/biz/biz.go` | replace with package-only `doc.go` |
+| `internal/biz/todo.go` | delete |
+| `internal/data/README.md` | preserve minimal navigation heading |
+| `internal/data/data.go` | replace with package-only `doc.go` |
+| `internal/data/todo.go` | delete |
+| `internal/service/README.md` | preserve minimal navigation heading |
+| `internal/service/service.go` | replace with package-only `doc.go` |
+| `internal/service/todo.go` | delete |
+| `internal/service/todo_test.go` | delete |
+
+| Baseline server path | Final action |
+| --- | --- |
+| `internal/server/grpc.go` | replace with frozen middleware, health, and reflection-disabled construction |
+| `internal/server/http.go` | replace with `internal/server/admin.go` |
+| `internal/server/server.go` | reduce to package ownership documentation |
+
+## Candidate-only paths
+
+| Added path | Role | Generated-service disposition |
 | --- | --- | --- |
-| `cmd/ani-kratos-layout-layout0/main.go` | replace with `cmd/server/main.go` | not_verified |
-| `cmd/ani-kratos-layout-layout0/wire.go` | delete; replace behavior with explicit `cmd/server/app.go` | not_verified |
-| `cmd/ani-kratos-layout-layout0/wire_gen.go` | delete | not_verified |
+| `.github/workflows/ci.yml` | source/runtime/supply-chain gates | retain |
+| `.github/workflows/layout.yml` | layout generator black-box gate | omit |
+| `THIRD_PARTY_NOTICES.go-kratos-layout.txt` | upstream MIT notice | retain |
+| `cmd/server/app.go` | explicit production composition root | rename directory and retain |
+| `cmd/server/app_test.go` | production composition/listener test | rename directory and retain |
+| `cmd/server/main.go` | command/config/logger/process entry | rename directory and retain |
+| `cmd/server/main_test.go` | logger and independent process/signal tests | rename directory and retain |
+| `docs/LAYOUT-0.md` | layout decision record | omit |
+| `docs/runtime.md` | generic runtime contract | retain |
+| `docs/runtime-verification.md` | generated-service gate instructions | retain |
+| `docs/scaffold/bom.cdx.json` | candidate runtime SBOM | omit; each service generates its own |
+| `docs/scaffold/component-coverage.md` | candidate component evidence | omit |
+| `docs/scaffold/dependency-baseline.md` | candidate dependency/tool evidence | omit |
+| `docs/scaffold/generated-baseline.md` | official baseline evidence | omit |
+| `docs/scaffold/license-review.md` | candidate license inventory | omit |
+| `docs/scaffold/scaffold-delta.md` | this reconciliation | omit |
+| `docs/scaffold/upgrade-policy.md` | layout maintenance policy | omit |
+| `docs/scaffold/upstream-provenance.md` | official source identity | omit |
+| `docs/scaffold/verification.md` | candidate acceptance evidence | omit |
+| `internal/biz/doc.go` | empty domain seam | retain |
+| `internal/conf/v1/conf.proto` | typed runtime config source | module-normalize, regenerate, retain |
+| `internal/conf/v1/conf.pb.go` | generated typed config | regenerate, retain |
+| `internal/conf/v1/validate.go` | listener/duration validation | retain |
+| `internal/conf/v1/validate_test.go` | validation matrix | retain |
+| `internal/data/doc.go` | empty outbound-adapter seam | retain |
+| `internal/server/admin.go` | Kratos admin transport | retain |
+| `internal/server/admin_test.go` | admin codec/middleware tests | retain |
+| `internal/server/observability.go` | local OTel/Prometheus wiring | retain |
+| `internal/server/readiness.go` | process-only readiness state | retain |
+| `internal/service/doc.go` | empty inbound-adapter seam | retain |
+| `scripts/check-generator-result` | official CLI error adapter | omit |
+| `scripts/generate-sbom` | deterministic service SBOM command | retain |
+| `scripts/new-service` | single layout bootstrap interface | omit |
+| `scripts/verify-layout` | layout-only black-box/negative gate | omit |
+| `scripts/verify-source` | generated-code and format gate | retain |
+| `templates/service/AGENTS.md` | generated root instructions | materialize as `AGENTS.md`, then omit templates |
+| `templates/service/README.md` | generated root README | materialize as `README.md`, then omit templates |
+| `tests/runtime/runtime_test.go` | transport/middleware/lifecycle integration fixture | retain |
 
-Planned additions are `cmd/server/app.go` and `cmd/server/main_test.go`. The
-generated service name and full module path are materialized by the wrapper; no
-Wire generator is required.
+## Executed reconciliation
 
-## Configuration
+The final gate lists `git diff --name-status` from the base to the candidate,
+checks every active source/build path for removed families, requires exactly
+`README.md` and `doc.go` in each empty extension seam, and generates two
+equal plus one distinct service.
 
-| Baseline path | Target action | Status |
-| --- | --- | --- |
-| `configs/config.yaml` | replace Todo/data config with safe local gRPC/admin runtime defaults | not_verified |
-| `internal/conf/conf.proto` | delete; replace with versioned `internal/conf/v1/conf.proto` | not_verified |
-| `internal/conf/conf.pb.go` | delete; regenerate as `internal/conf/v1/conf.pb.go`; never hand-edit | not_verified |
+Generated services contain neither `templates/` nor layout evidence. They
+receive a newly initialized Git repository with no remote, no submodule,
+`go.work`, local `replace`, layout import, or template origin. The private
+layout checkout is then renamed before the generated project is built and
+tested.
 
-Planned additions are `internal/conf/v1/validate.go` and
-`internal/conf/v1/validate_test.go`.
-
-## Business, data, and service seams
-
-| Baseline path | Target action | Status |
-| --- | --- | --- |
-| `internal/biz/README.md` | rewrite as a short ownership/navigation note | not_verified |
-| `internal/biz/biz.go` | reduce to a package declaration/doc only, if retained | not_verified |
-| `internal/biz/todo.go` | delete | not_verified |
-| `internal/data/README.md` | rewrite as a short ownership/navigation note | not_verified |
-| `internal/data/data.go` | reduce to a package declaration/doc only, if retained | not_verified |
-| `internal/data/todo.go` | delete | not_verified |
-| `internal/service/README.md` | rewrite as a short ownership/navigation note | not_verified |
-| `internal/service/service.go` | reduce to a package declaration/doc only, if retained | not_verified |
-| `internal/service/todo.go` | delete | not_verified |
-| `internal/service/todo_test.go` | delete | not_verified |
-
-These directories are ordinary extension seams. They do not recreate ANI's
-historical Core/Service import rules.
-
-## Runtime servers
-
-| Baseline path | Target action | Status |
-| --- | --- | --- |
-| `internal/server/grpc.go` | replace with the LAYOUT-0 middleware and health contract | not_verified |
-| `internal/server/http.go` | replace with `internal/server/admin.go` | not_verified |
-| `internal/server/server.go` | rewrite to expose explicit server composition | not_verified |
-
-Planned additions are:
-
-- `internal/server/admin_test.go`;
-- `internal/server/observability.go`;
-- `internal/server/readiness.go`; and
-- focused runtime integration tests under `tests/runtime/` when the public
-  process seam cannot be covered adequately inside the package.
-
-## Layout-only additions
-
-The following content exists in the layout repository but is removed or
-rewritten appropriately in a generated service:
-
-| Path | Purpose | Generated-service disposition | Status |
-| --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | pinned local/CI quality gates | restored by wrapper because official CLI omits `.github` | not_verified |
-| `scripts/new-service` | single thin generation entry point | omitted | not_verified |
-| `templates/service/README.md` | generated-service README source | materialized as root `README.md` | not_verified |
-| `templates/service/AGENTS.md` | generated-service instruction source | materialized as root `AGENTS.md` | not_verified |
-| `docs/LAYOUT-0.md` | layout decision record | omitted | not_verified |
-| `docs/runtime.md` | generic runtime contract | retained or linked as generated-service runtime documentation | not_verified |
-| `docs/scaffold/*` | layout provenance, policy, and verification evidence | layout-only evidence omitted, except generated provenance | not_verified |
-| `docs/scaffold/provenance.md` in generated output | deterministic source/module record produced by wrapper | retained | not_verified |
-
-## Final delta gate
-
-Before acceptance, the verifier must:
-
-1. list every path changed since the baseline commit;
-2. confirm each baseline path appears in a table above;
-3. confirm every new path has a declared role and generated-service
-   disposition;
-4. reject undeclared business, infrastructure, provider, or deployment code;
-5. reject remaining Todo, Wire, Ent, AIP, `@latest`, or baseline module-name
-   artifacts; and
-6. attach the exact candidate commit to [verification.md](verification.md).
-
-Result: **not_verified**.
+Result: **pass**.

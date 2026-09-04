@@ -1,76 +1,75 @@
 # Dependency and Toolchain Baseline
 
-- Status: **target pins frozen; final graph verification pending**
+- Status: **pass on the recorded local candidate**
 - Reference runtime: accepted `ani-iam` commit
   `05ba302661d593b608df070dd51cc063fc9f8023`
+- Verified host: `go1.26.7-X:nodwarf5 linux/amd64`
 
-The reference commit is used only as evidence for a known-working generic
-Kratos runtime assembly. IAM-specific APIs, configuration, ports, metrics,
-storage, and business behavior are excluded.
+The IAM revision is only a known-working reference for generic Kratos runtime
+assembly. IAM APIs, storage, configuration, ports, metrics, and business
+behavior are not copied.
 
-## Runtime target pins
+## Direct runtime graph
 
-| Module or directive | LAYOUT-0 target | Source of target | Current candidate verification |
-| --- | --- | --- | --- |
-| Go directive | `1.25.7` | accepted runtime reference | not_verified |
-| `github.com/go-kratos/kratos/v3` | `v3.0.0` | official v3 baseline and accepted runtime reference | not_verified |
-| `github.com/go-kratos/kratos/contrib/otel/v3` | `v3.0.0-20260515082355-1ddb58e407c5` | accepted runtime reference | not_verified |
-| `github.com/prometheus/client_golang` | `v1.24.1` | accepted runtime reference | not_verified |
-| `go.opentelemetry.io/otel` | `v1.44.0` | accepted runtime reference | not_verified |
-| `go.opentelemetry.io/otel/metric` | `v1.44.0` | accepted runtime reference | not_verified |
-| `go.opentelemetry.io/otel/sdk` | `v1.44.0` | accepted runtime reference | not_verified |
-| `go.opentelemetry.io/otel/sdk/metric` | `v1.44.0` | accepted runtime reference | not_verified |
-| `go.opentelemetry.io/otel/exporters/prometheus` | `v0.66.0` | accepted runtime reference | not_verified |
-| `go.uber.org/automaxprocs` | `v1.6.0` | official baseline and accepted runtime reference | not_verified |
-| `google.golang.org/grpc` | `v1.82.1` | accepted runtime reference | not_verified |
-| `google.golang.org/protobuf` | `v1.36.11` | accepted runtime reference | not_verified |
+| Module or directive | Frozen value | Verification |
+| --- | --- | --- |
+| Go directive | `1.25.7` | `go.mod` and generated repository |
+| `github.com/go-kratos/kratos/v3` | `v3.0.0` | direct graph gate |
+| `github.com/go-kratos/kratos/contrib/otel/v3` | `v3.0.0-20260515082355-1ddb58e407c5` | direct graph gate |
+| `github.com/prometheus/client_golang` | `v1.24.1` | direct graph gate |
+| `go.opentelemetry.io/otel` | `v1.44.0` | direct graph gate |
+| `go.opentelemetry.io/otel/metric` | `v1.44.0` | direct graph gate |
+| `go.opentelemetry.io/otel/sdk` | `v1.44.0` | direct graph gate |
+| `go.opentelemetry.io/otel/sdk/metric` | `v1.44.0` | direct graph gate |
+| `go.opentelemetry.io/otel/exporters/prometheus` | `v0.66.0` | direct graph gate |
+| `go.uber.org/automaxprocs` | `v1.6.0` | direct graph gate |
+| `google.golang.org/grpc` | `v1.82.1` | direct graph gate |
+| `google.golang.org/protobuf` | `v1.36.11` | direct graph gate |
+
+The executable gate compares all 11 non-main direct modules exactly, runs
+`go mod tidy -diff` and `go mod verify`, and scans the complete 83-entry
+module graph for denied defaults.
 
 The official generated baseline used gRPC `v1.81.1` and OpenTelemetry
-`v1.43.0`. Preliminary dependency inventory flagged those revisions against
-GO-2026-6061 and GO-2026-5158 respectively, so the LAYOUT-0 target adopts the
-already exercised newer reference set. The final vulnerability scan is still
-**not_verified** and may reveal additional findings.
+`v1.43.0`. Those revisions were previously flagged against GO-2026-6061 and
+GO-2026-5158, so the candidate uses the already exercised repaired set above.
+The current scan result is recorded in [verification.md](verification.md).
 
-## Intentionally absent direct dependencies
+## Intentionally absent dependency families
 
-| Dependency family | Reason |
+| Family | Reason |
 | --- | --- |
-| Wire | explicit composition is the LAYOUT-0 contract |
-| Ent or SQL drivers | persistence belongs to each service |
-| AIP/Todo modules | upstream sample domain is removed |
+| Wire | composition is explicit Go |
+| Ent, pgx, SQL drivers | persistence belongs to each service |
+| AIP and Todo modules | the upstream sample domain is removed |
 | NATS, Kafka, Redis | messaging/cache topology is not a layout concern |
-| Kubernetes or KubeVirt clients | platform workloads are not a generic service default |
-| mail, DingTalk, Feishu, WeCom, or WebSocket providers | notification delivery is outside LAYOUT-0 |
-| ANI or `ani-iam` runtime modules | generated services must not couple to sibling repositories |
+| Kubernetes and KubeVirt clients | platform providers are not a generic service default |
+| SMTP, DingTalk, Feishu, WeCom, WebSocket providers | notification delivery is outside LAYOUT-0 |
+| ANI and `ani-iam` runtime modules | generated services do not couple to sibling repositories |
 
-Absence from this table is a target assertion; the final `go.mod` and full
-transitive graph must still be inspected.
+The full-graph gate rejects these known families. A future dependency change is
+reviewed through the upgrade procedure; this list is not a substitute for that
+review.
 
 ## Generation and evidence tools
 
-| Tool | Target or observed version | Use | Status |
+| Tool | Enforced source identity | Local binary SHA-256 | Status |
 | --- | --- | --- | --- |
-| Kratos CLI | `v3.0.0`; binary hash in `upstream-provenance.md` | official generation engine | pass for baseline event |
-| Buf | `v1.60.0` | lint/build/generate typed config | not_verified |
-| `protoc-gen-go` | `v1.36.11` | deterministic config protobuf generation | not_verified |
-| `govulncheck` | `v1.7.0` | Go vulnerability scan | not_verified |
-| `cyclonedx-gomod` | `v1.12.0` | CycloneDX SBOM | not_verified |
+| Kratos CLI | `github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00`; output `kratos version v3.0.0` | `5fa73bad7552d84712f2273c0cd4b5b8ec9b988ee69755f22a0576493b8a727c` | pass |
+| Buf | `github.com/bufbuild/buf@v1.60.0` | `d931e6035fa4a101f6da4aeeeefcf72ea9478e08b6cc9a707d0e407bd5caee51` | pass |
+| `protoc-gen-go` | `google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11` in `buf.gen.yaml` | executed through pinned Go module | pass |
+| govulncheck | `golang.org/x/vuln@v1.7.0` | `cc939c9c2174c420e7c41f08d9e5d821ada9521a83988ddac9e5dc55c0b62a9e` | pass |
+| CycloneDX GoMod | `github.com/CycloneDX/cyclonedx-gomod@v1.12.0` | `437970c07caaf3f254f19a226f2fd72d78b37ef1927e31d806d0eea2c65c48e2` | pass |
 
-The host currently reports `go1.26.7-X:nodwarf5`; executing all gates with a
-native Go `1.25.7` toolchain is **not_verified**. Host binaries or cached module
-sources do not become proof until the recorded gate invokes them successfully.
+Module path plus version is the portable executable pin. Binary hashes are
+per-execution evidence, not a false promise that separately built binaries on
+other platforms have identical bytes.
 
-## Baseline closure gate
+## Verification boundary
 
-The dependency baseline becomes `pass` only when all of the following evidence
-is attached to one candidate commit:
-
-1. `go mod tidy` produces the reviewed direct dependency set;
-2. `go mod verify` succeeds;
-3. `go list -m all` is retained and reviewed for denied families;
-4. source and build files contain no moving `@latest` installations;
-5. generated protobuf output is reproducible with the pinned toolchain;
-6. `govulncheck ./...` has a recorded result and triage for every finding; and
-7. an SBOM is generated from the same commit.
-
-Current result: **not_verified**.
+- Native execution with the declared Go `1.25.7` toolchain is
+  **not_verified**; the host used the newer toolchain recorded above.
+- The committed SBOM is runtime-only and targets Linux/amd64. Test-only and
+  alternate-platform dependency inventories are **not_verified**.
+- A vulnerability result is current only for the scanner and database timestamp
+  in [verification.md](verification.md).

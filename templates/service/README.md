@@ -5,6 +5,10 @@ Module: `__SERVICE_MODULE__`
 This repository was generated from ANI's pinned Kratos layout. It is an
 independent source snapshot: builds and runtime do not require the layout.
 
+`THIRD_PARTY_NOTICES.go-kratos-layout.txt` preserves the upstream template's
+MIT notice. This generated repository intentionally has no project `LICENSE`;
+its owner must make that choice before publication.
+
 ## Local commands
 
 ```bash
@@ -12,6 +16,10 @@ make tools
 make verify
 go run ./cmd/ani-service-template -conf ./configs
 ```
+
+After the initial source commit, run `make supply-chain-tools`, `make vuln`, and
+`make sbom`; review and commit `docs/scaffold/bom.cdx.json`. CI deliberately
+fails when that runtime SBOM is missing or stale.
 
 The committed listeners are loopback-only local defaults. Override them through
 the typed `ANI` environment configuration when the deployment design is added.

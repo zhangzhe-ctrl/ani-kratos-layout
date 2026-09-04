@@ -284,6 +284,9 @@ mkdir -p "$generated/docs/scaffold"
 
 [[ -f $generated/cmd/$service/main.go ]] || die "generated command was not renamed"
 [[ -f $generated/.github/workflows/ci.yml ]] || die "generated CI workflow is missing"
+[[ -f $generated/THIRD_PARTY_NOTICES.go-kratos-layout.txt ]] || \
+  die "upstream Kratos layout notice is missing"
+[[ ! -e $generated/LICENSE ]] || die "generated service must choose its own project license"
 normalized_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
 [[ $normalized_module == "$module" ]] || die "generated module path was not normalized"
 if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \

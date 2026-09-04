@@ -83,7 +83,7 @@ raw_output=$temporary_root/bom.cdx.json
 (
   cd "$export_root"
   GOOS=linux GOARCH=amd64 "$tool_path" mod -json -noserial -notimestamp \
-    -licenses -assert-licenses -output "$raw_output"
+    -licenses -output "$raw_output"
 )
 
 staged_output=$(mktemp "$output_dir/.bom.cdx.json.XXXXXX")

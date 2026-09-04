@@ -12,6 +12,12 @@ LAYOUT-0 is a local candidate awaiting its explicit human acceptance gate.
 Prerequisites are Git, Go, `rg`, SHA-256 tooling, and the pinned official
 Kratos CLI described in `docs/scaffold/upstream-provenance.md`.
 
+Install the pinned Buf generator first:
+
+```bash
+make tools
+```
+
 ```bash
 ./scripts/new-service \
   github.com/zhangzhe-ctrl/ani-notification-service \
@@ -19,7 +25,8 @@ Kratos CLI described in `docs/scaffold/upstream-provenance.md`.
 ```
 
 The target directory must not exist. Generation happens in a private temporary
-directory and is moved into place only after structural checks pass.
+directory and is moved into place only after structural checks pass. The module
+must match `github.com/zhangzhe-ctrl/<lowercase-service-name>` exactly.
 
 ## What the generated service owns
 
@@ -33,6 +40,11 @@ directory and is moved into place only after structural checks pass.
 
 The generated repository is an independent source snapshot. It does not import,
 link to, or automatically synchronize with this layout repository.
+
+The retained `THIRD_PARTY_NOTICES.go-kratos-layout.txt` is the upstream Kratos
+layout MIT notice, not a license grant for ANI-authored changes. Each generated
+service owner must choose and add that repository's project license before
+publication.
 
 ## Deliberate omissions
 

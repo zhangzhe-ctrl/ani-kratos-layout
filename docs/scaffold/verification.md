@@ -1,110 +1,155 @@
 # LAYOUT-0 Verification Record
 
-- Candidate commit: **not yet recorded**
 - Evidence capture date: 2026-09-04
-- Overall result: **not_verified**
+- Candidate identity: local annotated tag `layout-0-candidate` plus the exact SHA
+  printed in the handoff; no remote identity is claimed
+- Local technical result: **pass**
+- Human acceptance: **not_verified**
 
 ## Result vocabulary
 
-- `pass`: exact command and assertions were executed at the recorded candidate
-  commit and evidence was retained.
-- `fail`: execution completed and contradicted at least one required assertion.
-- `not_verified`: execution has not occurred, evidence is missing, or the test
-  does not prove the stated behavior.
+- `pass`: the command and its assertions ran against the candidate revision and
+  the result is summarized below.
+- `fail`: execution contradicted a required assertion.
+- `not_verified`: the gate did not run or the evidence is insufficient.
 
-Do not replace `fail` with `not_verified` when replanning. Local evidence does
-not establish CI, deployment, or live external behavior.
+Local evidence does not establish hosted CI, deployment, or external service
+behavior. A design statement is not execution evidence.
+
+## Execution environment
+
+| Item | Observed identity |
+| --- | --- |
+| host toolchain | `go1.26.7-X:nodwarf5 linux/amd64` |
+| Kratos CLI | `kratos version v3.0.0`; module `github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00`; SHA-256 `5fa73bad7552d84712f2273c0cd4b5b8ec9b988ee69755f22a0576493b8a727c` |
+| Buf | `v1.60.0`; module `github.com/bufbuild/buf@v1.60.0`; SHA-256 `d931e6035fa4a101f6da4aeeeefcf72ea9478e08b6cc9a707d0e407bd5caee51` |
+| govulncheck | `v1.7.0`; SHA-256 `cc939c9c2174c420e7c41f08d9e5d821ada9521a83988ddac9e5dc55c0b62a9e` |
+| CycloneDX GoMod | `v1.12.0`; SHA-256 `437970c07caaf3f254f19a226f2fd72d78b37ef1927e31d806d0eea2c65c48e2` |
+
+Kratos and Buf enforce source module plus version. Binary hashes are retained as
+per-execution provenance because a valid binary hash changes with Go builder,
+GOOS, and GOARCH; a single Linux hash is not presented as a cross-platform pin.
 
 ## Provenance and baseline
 
-| Gate | Assertion | Evidence | Status |
-| --- | --- | --- | --- |
-| V01 | Kratos CLI is v3.0.0 with the recorded module and SHA-256 | [upstream-provenance.md](upstream-provenance.md) | pass |
-| V02 | official layout is tag v3.0.0 at the recorded commit and tree | [upstream-provenance.md](upstream-provenance.md) | pass |
-| V03 | official output is preserved before ANI edits | baseline commit `4af0617138aa0fb10a4495ccd05c234da12aaf63`, [generated-baseline.md](generated-baseline.md) | pass |
-| V04 | finished candidate commit is recorded and clean | pending | not_verified |
-| V05 | every baseline and added path is accounted for | [scaffold-delta.md](scaffold-delta.md), final diff pending | not_verified |
+| Gate | Assertion and evidence | Status |
+| --- | --- | --- |
+| V01 | Kratos CLI source identity and observed binary hash match [upstream-provenance.md](upstream-provenance.md) | pass |
+| V02 | official layout is tag `v3.0.0`, commit `94dbfcc4264a6be8e7b6c4929923c1e1f738b980`, tree `5c4bc67d0dda31e60c5ef27f1bdd4551a9e8ffcc` | pass |
+| V03 | unmodified 40-file output is retained at baseline commit `4af0617138aa0fb10a4495ccd05c234da12aaf63`; all three anchor hashes were recomputed from Git objects | pass |
+| V04 | candidate is a clean commit identified by local tag `layout-0-candidate`; exact SHA is reported at handoff | pass |
+| V05 | every baseline path and every candidate addition is reconciled in [scaffold-delta.md](scaffold-delta.md) | pass |
 
 ## Source and generation gates
 
-Commands below are intended to run from the clean layout candidate unless a
-generated repository is named explicitly. Exact evidence paths should be added
-when results exist.
+The source gate was run as:
 
-| Gate | Command or procedure | Required assertion | Status |
-| --- | --- | --- | --- |
-| V10 | pinned Buf lint/build/generate, then `git diff --exit-code` | config generated code is reproducible | not_verified |
-| V11 | `gofmt` check over tracked Go files | no formatting diff | not_verified |
-| V12 | scan source/build files for `@latest`, Todo, Wire, Ent, AIP, baseline module token | no prohibited residue outside historical evidence docs | not_verified |
-| V13 | inspect `go.mod` and `go list -m all` | direct graph matches dependency baseline; denied families absent | not_verified |
-| V14 | generate same full module into two fresh destinations | byte-identical trees excluding `.git` and documented nondeterministic build artifacts | not_verified |
-| V15 | generate a second distinct full module | module declaration, imports, service name, and command path are correct | not_verified |
-| V16 | hide or rename the layout checkout, then build generated service | generated service has no layout filesystem/runtime dependency | not_verified |
-| V17 | inspect generated result | layout-only wrapper/templates/evidence are absent; service README/AGENTS/provenance and CI are present | not_verified |
+```bash
+make verify
+```
+
+The black-box layout gate was run as:
+
+```bash
+scripts/verify-layout /home/chabking/go/bin/kratos .tools/bin/buf
+```
+
+| Gate | Observed assertion | Status |
+| --- | --- | --- |
+| V10 | pinned Buf lint/build/generate plus `go generate` produced no tree change | pass |
+| V11 | all Go source passed the all-tree `gofmt` check | pass |
+| V12 | executable policy scan found no moving `@latest`, Todo, Wire, Ent, AIP, business API, workspace, submodule, or replace residue in active source/build paths | pass |
+| V13 | `go mod tidy -diff`, `go mod verify`, the 11-entry direct graph, and the denied-family scan matched [dependency-baseline.md](dependency-baseline.md) | pass |
+| V14 | two equal module inputs produced equal Git tree IDs, including file modes and object types | pass |
+| V15 | a second exact-form ANI module produced the expected module, imports, Proto option, command directory, README, CI, and provenance | pass |
+| V16 | the private layout checkout was renamed out of reach before the generated service ran `make verify`; it still passed | pass |
+| V17 | generated repositories retained service README/AGENTS/runtime docs/CI/provenance and omitted layout-only wrapper, templates, evidence, and workflow | pass |
+
+The gate intentionally regenerates Protobuf after module normalization. This
+prevents a text replacement from corrupting the encoded raw descriptor while
+still requiring a clean regeneration on the generated service.
 
 ## Fail-closed wrapper gates
 
-Each test uses a task-owned temporary parent and must leave no partial
-destination.
+All cases used task-owned temporary parents and checked destination/cache
+cleanup.
 
-| Gate | Injected condition | Required result | Status |
-| --- | --- | --- | --- |
-| V20 | syntactically invalid Go module path | non-zero exit; no destination | not_verified |
-| V21 | destination already exists | non-zero exit; existing content unchanged | not_verified |
-| V22 | layout checkout is dirty | non-zero exit; no destination | not_verified |
-| V23 | layout checkout is detached or identity cannot be proven | non-zero exit; no destination | not_verified |
-| V24 | Kratos CLI version/module/hash differs from the pin | non-zero exit; no destination | not_verified |
-| V25 | generator prints an `ERROR:` line while returning zero | wrapper detects failure; no destination | not_verified |
-| V26 | generation is interrupted before final move | only private temporary output exists and is cleaned; no destination | not_verified |
+| Gate | Injected condition and observed result | Status |
+| --- | --- | --- |
+| V20 | three invalid module forms returned non-zero and left no destination | pass |
+| V21 | an existing destination returned non-zero; its sentinel hash and sole-file shape were unchanged | pass |
+| V22 | a dirty private layout returned non-zero and left no destination | pass |
+| V23 | a detached private layout returned non-zero and left no destination | pass |
+| V24 | mismatched Kratos and Buf version/module identities returned non-zero; binary hashes were recorded, not treated as portable pins | pass |
+| V25 | an ANSI `ERROR:` helper fixture failed; a full-wrapper diagnostic injection also failed before destination materialization | pass |
+| V26 | a process-group interruption during the private source clone returned non-zero and removed both scratch and private Kratos cache | pass |
+| V27 | a destination created immediately before the final move was preserved unchanged; no generated files were nested into or substituted for it | pass |
 
 ## Go and runtime gates
 
-| Gate | Command or probe | Required assertion | Status |
-| --- | --- | --- | --- |
-| V30 | `go test ./...` with task-owned cache | all tests pass | not_verified |
-| V31 | `go vet ./...` | no findings | not_verified |
-| V32 | `go build ./cmd/...` | server binary builds | not_verified |
-| V33 | `go mod verify` | every downloaded module checksum verifies | not_verified |
-| V34 | start generated binary with an isolated local config | both listeners bind only requested addresses | not_verified |
-| V35 | gRPC health `Check` | returns serving after startup | not_verified |
-| V36 | gRPC reflection probe | reflection remains disabled | not_verified |
-| V37 | `GET /healthz` | expected Kratos-encoded success | not_verified |
-| V38 | `GET /readyz` before/running/stopping | state follows process lifecycle and makes no dependency claim | not_verified |
-| V39 | `GET /metrics` | valid Prometheus exposition contains `ani_runtime_ready` | not_verified |
-| V40 | send termination signal | process exits within configured shutdown timeout; listeners close | not_verified |
-| V41 | inspect request logs and metrics | structured correlation fields and frozen middleware effects are observable | not_verified |
+`make verify` ran `go test -count=1 ./...`, `go vet ./...`,
+`go build -trimpath ./...`, `go mod verify`, and `git diff --check`.
+
+| Gate | Observed assertion | Status |
+| --- | --- | --- |
+| V30 | all seven root packages built and all tests passed | pass |
+| V31 | `go vet ./...` emitted no finding | pass |
+| V32 | `go build -trimpath ./...` succeeded | pass |
+| V33 | module verification reported `all modules verified` | pass |
+| V34 | the test built and started the real generated command on isolated loopback listeners | pass |
+| V35 | gRPC health returned `SERVING` after startup | pass |
+| V36 | the reflection probe returned `Unimplemented` | pass |
+| V37 | `/healthz` returned Kratos-encoded JSON success | pass |
+| V38 | `/readyz` and `ani_runtime_ready` were verified at false, running, stopping, and stopped lifecycle states | pass |
+| V39 | `/metrics` returned Prometheus exposition and Kratos request counters | pass |
+| V40 | the independent process handled an interrupt, exited successfully inside the configured bound, and closed its listener | pass |
+| V41 | JSON logs contained timestamp, caller, service id/name/version, trace/span correlation, middleware request records, and redaction | pass |
+| V42 | test-only gRPC RPCs proved metadata, validation-before-handler, recovery, tracing, logging, and metrics execution | pass |
 
 ## Supply-chain gates
 
-| Gate | Command or procedure | Required assertion | Status |
-| --- | --- | --- | --- |
-| V50 | `govulncheck ./...` with recorded DB/tool context | no untriaged reachable finding | not_verified |
-| V51 | CycloneDX Go-module SBOM generation | valid SBOM attached to the candidate commit | not_verified |
-| V52 | secret scan over tracked files and history introduced by LAYOUT-0 | no credential material | not_verified |
-| V53 | license/notice review | upstream MIT license preserved; dependency obligations recorded | not_verified |
+```bash
+make vuln
+make sbom
+make sbom
+```
 
-## Evidence outside this work package
+The second SBOM run was repeated with `TMPDIR` nested inside an unrelated Git
+repository. All runs produced the same source-snapshot identity and bytes when
+using the recorded CycloneDX binary and Linux/amd64 target.
+
+| Gate | Observed assertion | Status |
+| --- | --- | --- |
+| V50 | govulncheck DB `https://vuln.go.dev`, updated `2026-09-02 19:12:04 +0000 UTC`; 7 packages and 35 modules/standard library scanned; `No vulnerabilities found.` | pass |
+| V51 | [bom.cdx.json](bom.cdx.json) is CycloneDX 1.6, timestamp/serial-free, Linux/amd64 runtime scope, 34 third-party components; identical reruns use a deterministic synthetic source commit that excludes the BOM itself | pass |
+| V52 | tracked files and commits introduced since the official baseline were scanned for private-key blocks and common GitHub, AWS, Slack, bearer, password, and credential token forms; no credential material was found | pass |
+| V53 | upstream notice is retained without choosing an ANI project license; all 34 runtime components have heuristic license evidence and their obligations/boundaries are recorded in [license-review.md](license-review.md) | pass |
+
+CycloneDX license detection is evidence, not a legal assertion. Test-only
+dependencies are not included in this runtime SBOM. Publication packaging and
+the license for ANI-authored code remain explicit owner decisions.
+
+## Deliberate `not_verified` results
 
 | Claim | Status | Reason |
 | --- | --- | --- |
-| remote Git repository exists | not_verified | remote creation/push is not authorized |
-| hosted CI passes | not_verified | no remote push or PR is in scope |
-| container image builds | not_verified | packaging is deferred |
-| Kubernetes deployment works | not_verified | deployment/live infrastructure is out of scope |
-| any notification is submitted or delivered | not_verified | NOTIFY implementation starts only after LAYOUT-0 acceptance |
-| frontend integration works | not_verified | ANI frontend is retired and excluded |
-| native Go 1.25.7 gates pass | not_verified | current observed host tool reports Go 1.26.7-X:nodwarf5 |
+| human acceptance of L1-L4 | not_verified | only the decision owner can send the acceptance phrase |
+| remote repository, push, branch protection, release, hosted Actions | not_verified | no remote write or hosted run is authorized |
+| native Go 1.25.7, race, fuzz, other OS/architecture | not_verified | this evidence used the recorded host and Linux/amd64 target |
+| container image or Kubernetes deployment | not_verified | packaging and deployment are deferred |
+| external OTel collector, logs backend, dashboards, alerts | not_verified | local instrumentation does not prove external export |
+| notification submission or delivery | not_verified | notification implementation starts only after acceptance |
+| PostgreSQL, SMTP, NATS, IAM, key systems | not_verified | no vertical-slice integration is in LAYOUT-0 |
+| distribution-license packaging or ANI project license | not_verified | requires the service/repository owner's publication decision |
 
 ## Acceptance checklist
 
-- [ ] record the exact clean candidate commit;
-- [ ] reconcile the complete scaffold delta;
-- [ ] close every C01–C38 component row;
-- [ ] retain deterministic and fail-closed generation evidence;
-- [ ] retain local Go/runtime and supply-chain evidence;
-- [ ] list every remaining `fail` and `not_verified` result without relabeling;
-- [ ] independent review finds no undeclared scope expansion; and
-- [ ] decision owner accepts L1–L4 with the phrase in `docs/LAYOUT-0.md`.
+- [x] preserve exact upstream identity and unmodified baseline;
+- [x] reconcile the complete scaffold delta;
+- [x] close every C01-C38 component row;
+- [x] retain deterministic, fail-closed, race, and interruption generation evidence;
+- [x] retain source, independent-process, vulnerability, SBOM, secret, and license-inventory evidence;
+- [x] independent reviews found and the implementation closed all technical blockers;
+- [ ] decision owner accepts L1-L4 with the phrase in `docs/LAYOUT-0.md`.
 
-Current result: **not_verified — implementation and human acceptance remain
-open**.
+Current result: **local technical pass; human acceptance not_verified**.

@@ -1,6 +1,6 @@
 # Layout and Dependency Upgrade Policy
 
-- Status: **FROZEN POLICY — execution not_verified**
+- Status: **FROZEN POLICY — LAYOUT-0 execution pass**
 
 This policy keeps the layout useful without turning it into a central runtime
 release train. It applies to the layout repository itself; generated services
@@ -13,7 +13,9 @@ reviewed evidence. It is never an automatic rewrite of existing services.
 
 ## Pinning rules
 
-1. The Kratos CLI is identified by version, Go module version, and binary hash.
+1. The Kratos and Buf CLIs enforce their reported version and Go module
+   path/version. Their binary hashes, builder, GOOS, and GOARCH are recorded for
+   each evidence run; one platform's hash is not a false cross-platform pin.
 2. The official layout is identified by immutable commit and tree, even when a
    human-friendly tag is also recorded.
 3. Go direct dependencies use exact versions in `go.mod`.
@@ -22,6 +24,9 @@ reviewed evidence. It is never an automatic rewrite of existing services.
 5. Generated output is committed and must reproduce without a diff.
 6. A mutable branch name or sibling working tree is not an acceptable release
    baseline.
+7. A committed SBOM is generated from a deterministic synthetic Git snapshot
+   that excludes the prior SBOM. Its byte-reproducibility scope includes the
+   exact CycloneDX binary and Linux/amd64 target recorded by the run.
 
 ## Change classes
 
@@ -45,8 +50,9 @@ contract.
 4. Review the full upstream-to-ANI delta; do not carry changes through an opaque
    copy operation.
 5. Run generation twice with the same module and once with a different module.
-6. Exercise invalid module, existing destination, dirty layout, tool mismatch,
-   and generator-failure paths.
+6. Exercise invalid module, existing destination, target-appearance race, dirty
+   and detached layout, tool mismatch, generator-diagnostic, and interruption
+   paths.
 7. Run generate-diff, format, tests, vet, build, module verification, runtime
    probes, vulnerability scan, secret scan, license check, and SBOM generation.
 8. Build a generated service after making the layout checkout unavailable to
