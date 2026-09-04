@@ -44,11 +44,11 @@
       }
     ],
     "component": {
-      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-9599e28a8a76?type=module",
+      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-8f0654919e58?type=module",
       "type": "application",
       "name": "github.com/zhangzhe-ctrl/ani-kratos-layout",
-      "version": "v0.0.0-20000101000000-9599e28a8a76",
-      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-9599e28a8a76?goarch=amd64\u0026goos=linux\u0026type=module",
+      "version": "v0.0.0-20000101000000-8f0654919e58",
+      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-8f0654919e58?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/zhangzhe-ctrl/ani-kratos-layout",
@@ -951,7 +951,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-9599e28a8a76?type=module",
+      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-kratos-layout@v0.0.0-20000101000000-8f0654919e58?type=module",
       "dependsOn": [
         "pkg:golang/github.com/go-kratos/kratos/contrib/otel/v3@v3.0.0-20260515082355-1ddb58e407c5?type=module",
         "pkg:golang/github.com/go-kratos/kratos/v3@v3.0.0?type=module",
