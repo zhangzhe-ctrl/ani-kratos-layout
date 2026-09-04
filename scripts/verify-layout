@@ -38,11 +38,13 @@ buf_bin=$2
 [[ -x $buf_bin ]] || die "buf is not executable"
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-layout_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
+candidate_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
   die "layout is not a Git checkout"
-layout_state=$(git -C "$layout_root" status --porcelain --untracked-files=all) || \
+candidate_state=$(git -C "$candidate_root" status --porcelain --untracked-files=all) || \
   die "cannot inspect layout status"
-[[ -z $layout_state ]] || die "layout must be clean"
+[[ -z $candidate_state ]] || die "layout must be clean"
+candidate_commit=$(git -C "$candidate_root" rev-parse --verify HEAD) || \
+  die "cannot inspect candidate commit"
 
 temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/ani-layout-verify.XXXXXX")
 cleanup() {
@@ -57,43 +59,92 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-for run in same-a same-b other invalid-a invalid-b invalid-c existing dirty detached mismatch; do
+git clone --quiet --single-branch "file://$candidate_root" "$temporary_root/layout-source"
+layout_root=$temporary_root/layout-source
+[[ $(git -C "$layout_root" rev-parse --verify HEAD) == "$candidate_commit" ]] || \
+  die "private verification layout does not match the candidate commit"
+
+for run in same-a same-b other invalid-a invalid-b invalid-c existing dirty detached \
+  mismatch mismatch-buf injected-error interrupted race; do
   mkdir -p "$temporary_root/$run"
 done
 
-KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
-  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-a"
-KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
-  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-b"
-KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
-  github.com/zhangzhe-ctrl/layout0-other-service --parent "$temporary_root/other"
+assert_layout_policy() {
+  local module_graph direct_graph
+  if rg_quiet --hidden --line-number '@latest' \
+    --glob 'Makefile' --glob '*.yaml' --glob '*.yml' --glob 'scripts/**' \
+    --glob '!docs/**' "$layout_root"; then
+    die "layout source/build files contain a moving @latest tool"
+  fi
+  if rg_quiet --hidden --line-number --ignore-case '\b(todo|wire|ent|aip)\b' \
+    --glob '*.go' --glob '*.proto' --glob 'go.mod' --glob 'configs/**' \
+    --glob '!docs/**' "$layout_root"; then
+    die "layout runtime contains a removed sample or generator family"
+  fi
+  [[ ! -e $layout_root/go.work && ! -e $layout_root/.gitmodules ]] || \
+    die "layout contains a workspace or submodule binding"
+  if rg_quiet '^[[:space:]]*replace([[:space:](]|$)' "$layout_root/go.mod"; then
+    die "layout go.mod contains a replace directive"
+  fi
+  [[ ! -d $layout_root/api ]] || die "layout contains a business API directory"
 
-write_manifest() {
-  local source_root=$1
-  local output_file=$2
-  local file_list=$output_file.files
-  find "$source_root" -type f -not -path "$source_root/.git/*" -print0 >"$file_list"
-  : >"$output_file"
-  while IFS= read -r -d '' file; do
-    relative_path=${file#"$source_root/"}
-    [[ $relative_path != *$'\n'* ]] || die "newline in generated path is unsupported"
-    printf '%s  %s\n' "$(sha256_file "$file")" "$relative_path" >>"$output_file"
-  done <"$file_list"
-  LC_ALL=C sort -o "$output_file" "$output_file"
-  rm -f -- "$file_list"
+  module_graph=$temporary_root/go-list-m-all.txt
+  direct_graph=$temporary_root/go-list-direct.txt
+  (cd "$layout_root" && GOWORK=off go list -m all) >"$module_graph"
+  if rg_quiet 'github\.com/google/wire|entgo\.io/ent|go\.einride\.tech/aip|github\.com/nats-io/|github\.com/redis/|github\.com/segmentio/kafka|k8s\.io/(api|client-go)|kubevirt\.io/|github\.com/jackc/pgx|github\.com/lib/pq' "$module_graph"; then
+    die "layout dependency graph contains a denied default dependency family"
+  fi
+  (cd "$layout_root" && GOWORK=off go list -m \
+    -f '{{if and (not .Main) (not .Indirect)}}{{.Path}} {{.Version}}{{end}}' all) \
+    | sed '/^$/d' | LC_ALL=C sort >"$direct_graph"
+  expected_direct=$(printf '%s\n' \
+    'github.com/go-kratos/kratos/contrib/otel/v3 v3.0.0-20260515082355-1ddb58e407c5' \
+    'github.com/go-kratos/kratos/v3 v3.0.0' \
+    'github.com/prometheus/client_golang v1.24.1' \
+    'go.opentelemetry.io/otel v1.44.0' \
+    'go.opentelemetry.io/otel/exporters/prometheus v0.66.0' \
+    'go.opentelemetry.io/otel/metric v1.44.0' \
+    'go.opentelemetry.io/otel/sdk v1.44.0' \
+    'go.opentelemetry.io/otel/sdk/metric v1.44.0' \
+    'go.uber.org/automaxprocs v1.6.0' \
+    'google.golang.org/grpc v1.82.1' \
+    'google.golang.org/protobuf v1.36.11' | LC_ALL=C sort)
+  [[ $(<"$direct_graph") == "$expected_direct" ]] || {
+    diff -u <(printf '%s\n' "$expected_direct") "$direct_graph" >&2 || true
+    die "layout direct dependency graph differs from the frozen baseline"
+  }
 }
+
+snapshot_tree() {
+  local repository=$1
+  git -C "$repository" add --all
+  git -C "$repository" write-tree
+}
+
+assert_layout_policy
+
+KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-a"
+KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-smoke-service --parent "$temporary_root/same-b"
+KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/layout0-other-service --parent "$temporary_root/other"
 
 same_a=$temporary_root/same-a/layout0-smoke-service
 same_b=$temporary_root/same-b/layout0-smoke-service
 other=$temporary_root/other/layout0-other-service
-write_manifest "$same_a" "$temporary_root/same-a.manifest"
-write_manifest "$same_b" "$temporary_root/same-b.manifest"
-cmp --silent "$temporary_root/same-a.manifest" "$temporary_root/same-b.manifest" || \
-  die "same input did not produce byte-identical trees"
+same_a_tree=$(snapshot_tree "$same_a")
+same_b_tree=$(snapshot_tree "$same_b")
+[[ $same_a_tree == "$same_b_tree" ]] || \
+  die "same input did not produce identical Git trees including modes and types"
 
 [[ $(awk '$1 == "module" {print $2; exit}' "$other/go.mod") == \
   "github.com/zhangzhe-ctrl/layout0-other-service" ]] || die "second module was not materialized"
 [[ -f $other/cmd/layout0-other-service/main.go ]] || die "second command was not renamed"
+rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service/internal/conf/v1' \
+  "$other/internal/conf/v1/conf.proto" || die "second module Proto option was not normalized"
+rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service' \
+  "$other/README.md" || die "second module README was not normalized"
 [[ -f $other/docs/scaffold/provenance.md ]] || die "generation provenance is missing"
 [[ -f $other/.github/workflows/ci.yml ]] || die "service CI is missing"
 [[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
@@ -111,11 +162,11 @@ expect_failure() {
   [[ $status -ne 0 ]] || die "$label unexpectedly succeeded"
 }
 
-expect_failure invalid-a env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+expect_failure invalid-a env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   foo/bar --parent "$temporary_root/invalid-a"
-expect_failure invalid-b env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+expect_failure invalid-b env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com./owner/bad-service --parent "$temporary_root/invalid-b"
-expect_failure invalid-c env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+expect_failure invalid-c env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/Bad-Service --parent "$temporary_root/invalid-c"
 [[ ! -e $temporary_root/invalid-a/bar ]] || die "invalid module left a destination"
 [[ ! -e $temporary_root/invalid-b/bad-service ]] || die "invalid host left a destination"
@@ -125,7 +176,7 @@ existing_target=$temporary_root/existing/existing-service
 mkdir -p "$existing_target"
 printf 'do not overwrite\n' >"$existing_target/sentinel"
 sentinel_hash=$(sha256_file "$existing_target/sentinel")
-expect_failure existing env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-service" \
+expect_failure existing env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/existing-service --parent "$temporary_root/existing"
 [[ $(sha256_file "$existing_target/sentinel") == "$sentinel_hash" ]] || \
   die "existing destination was modified"
@@ -135,7 +186,7 @@ expect_failure existing env KRATOS_BIN="$kratos_bin" "$layout_root/scripts/new-s
 git clone --quiet "file://$layout_root" "$temporary_root/dirty/layout"
 printf 'dirty\n' >"$temporary_root/dirty/layout/dirty-probe"
 mkdir -p "$temporary_root/dirty/output"
-expect_failure dirty env KRATOS_BIN="$kratos_bin" \
+expect_failure dirty env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" \
   "$temporary_root/dirty/layout/scripts/new-service" \
   github.com/zhangzhe-ctrl/dirty-service --parent "$temporary_root/dirty/output"
 [[ ! -e $temporary_root/dirty/output/dirty-service ]] || die "dirty layout left a destination"
@@ -143,26 +194,132 @@ expect_failure dirty env KRATOS_BIN="$kratos_bin" \
 git clone --quiet "file://$layout_root" "$temporary_root/detached/layout"
 git -C "$temporary_root/detached/layout" checkout --quiet --detach
 mkdir -p "$temporary_root/detached/output"
-expect_failure detached env KRATOS_BIN="$kratos_bin" \
+expect_failure detached env KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" \
   "$temporary_root/detached/layout/scripts/new-service" \
   github.com/zhangzhe-ctrl/detached-service --parent "$temporary_root/detached/output"
 [[ ! -e $temporary_root/detached/output/detached-service ]] || die "detached layout left a destination"
 
-expect_failure mismatch env KRATOS_BIN=/bin/true "$layout_root/scripts/new-service" \
+expect_failure mismatch env KRATOS_BIN=/bin/true BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
   github.com/zhangzhe-ctrl/mismatch-service --parent "$temporary_root/mismatch"
 [[ ! -e $temporary_root/mismatch/mismatch-service ]] || die "tool mismatch left a destination"
 
-printf '\033[31mERROR: simulated official CLI failure\033[m\n' >"$temporary_root/ansi-error.log"
-expect_failure ansi-error "$layout_root/scripts/check-generator-result" 0 "$temporary_root/ansi-error.log"
+expect_failure mismatch-buf env KRATOS_BIN="$kratos_bin" BUF_BIN=/bin/true \
+  "$layout_root/scripts/new-service" github.com/zhangzhe-ctrl/mismatch-buf-service \
+  --parent "$temporary_root/mismatch-buf"
+[[ ! -e $temporary_root/mismatch-buf/mismatch-buf-service ]] || \
+  die "buf mismatch left a destination"
+
+printf '\033[31mERROR: simulated official CLI failure\033[m\n' >"$temporary_root/ansi-error.input.log"
+expect_failure ansi-error "$layout_root/scripts/check-generator-result" 0 \
+  "$temporary_root/ansi-error.input.log"
 printf 'official generator completed\n' >"$temporary_root/clean-generator.log"
 "$layout_root/scripts/check-generator-result" 0 "$temporary_root/clean-generator.log"
 
+real_rg=$(command -v rg)
+error_shim=$temporary_root/injected-error/shim
+mkdir -p "$error_shim"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -Eeuo pipefail' \
+  'for argument in "$@"; do' \
+  '  if [[ $argument == "ERROR:" ]]; then' \
+  '    log_file=${!#}' \
+  '    printf "ERROR: injected generator diagnostic\\n" >>"$log_file"' \
+  '    break' \
+  '  fi' \
+  'done' \
+  'exec "$REAL_RG" "$@"' >"$error_shim/rg"
+chmod 0755 "$error_shim/rg"
+expect_failure injected-error env PATH="$error_shim:$PATH" REAL_RG="$real_rg" \
+  KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/injected-error-service --parent "$temporary_root/injected-error"
+[[ ! -e $temporary_root/injected-error/injected-error-service ]] || \
+  die "injected generator error left a destination"
+
+real_mv=$(command -v mv)
+race_target=$temporary_root/race/race-service
+race_shim=$temporary_root/race/shim
+mkdir -p "$race_shim"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -Eeuo pipefail' \
+  'target=${!#}' \
+  'if [[ $target == "$RACE_TARGET" && ! -e $target && ! -L $target ]]; then' \
+  '  mkdir -p "$target"' \
+  '  printf "do not overwrite\\n" >"$target/sentinel"' \
+  'fi' \
+  'exec "$REAL_MV" "$@"' >"$race_shim/mv"
+chmod 0755 "$race_shim/mv"
+expect_failure race env PATH="$race_shim:$PATH" REAL_MV="$real_mv" RACE_TARGET="$race_target" \
+  KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" "$layout_root/scripts/new-service" \
+  github.com/zhangzhe-ctrl/race-service --parent "$temporary_root/race"
+[[ -f $race_target/sentinel ]] || die "race sentinel was not preserved"
+[[ $(<"$race_target/sentinel") == "do not overwrite" ]] || die "race destination was modified"
+[[ $(find "$race_target" -mindepth 1 -maxdepth 1 | wc -l) -eq 1 ]] || \
+  die "race destination gained generated content"
+
+command -v setsid >/dev/null 2>&1 || die "setsid is required for interruption verification"
+real_git=$(command -v git)
+interrupt_marker=$temporary_root/interrupted/source-clone-started
+interrupt_shim=$temporary_root/interrupted/shim
+mkdir -p "$interrupt_shim"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -Eeuo pipefail' \
+  'if [[ ${1:-} == clone ]]; then' \
+  '  for argument in "$@"; do' \
+  '    if [[ $argument == */layout-source ]]; then' \
+  '      : >"$INTERRUPT_MARKER"' \
+  '      while :; do sleep 1; done' \
+  '    fi' \
+  '  done' \
+  'fi' \
+  'exec "$REAL_GIT" "$@"' >"$interrupt_shim/git"
+chmod 0755 "$interrupt_shim/git"
+set +e
+setsid env PATH="$interrupt_shim:$PATH" REAL_GIT="$real_git" \
+  INTERRUPT_MARKER="$interrupt_marker" KRATOS_BIN="$kratos_bin" BUF_BIN="$buf_bin" \
+  "$layout_root/scripts/new-service" github.com/zhangzhe-ctrl/interrupted-service \
+  --parent "$temporary_root/interrupted" >"$temporary_root/interrupted/process.log" 2>&1 &
+interrupt_pid=$!
+set -e
+for _ in $(seq 1 100); do
+  [[ -e $interrupt_marker ]] && break
+  sleep 0.05
+done
+if [[ ! -e $interrupt_marker ]]; then
+  kill -TERM -- "-$interrupt_pid" 2>/dev/null || true
+  wait "$interrupt_pid" 2>/dev/null || true
+  die "interruption fixture did not reach private generation"
+fi
+kill -TERM -- "-$interrupt_pid"
+set +e
+wait "$interrupt_pid"
+interrupt_status=$?
+set -e
+[[ $interrupt_status -ne 0 ]] || die "interrupted generation unexpectedly succeeded"
+[[ ! -e $temporary_root/interrupted/interrupted-service ]] || \
+  die "interrupted generation left a destination"
+if find "$temporary_root/interrupted" -maxdepth 1 -name '.interrupted-service.ani-layout.*' \
+  -print -quit | rg_quiet '.'; then
+  die "interrupted generation left private scratch output"
+fi
+user_home_dir=$(cd ~ && pwd -P)
+if [[ -d $user_home_dir/.kratos/repo ]] && \
+  find "$user_home_dir/.kratos/repo" -maxdepth 1 -name '.interrupted-service.ani-layout.*' \
+    -print -quit | rg_quiet '.'; then
+  die "interrupted generation left private Kratos cache output"
+fi
+
+hidden_layout=$temporary_root/layout-unavailable
+mv --no-target-directory -- "$layout_root" "$hidden_layout"
+[[ ! -e $layout_root ]] || die "private layout remained available during independence gate"
 (
   cd "$same_a"
   GOWORK=off make BUF="$buf_bin" verify
 )
-write_manifest "$same_a" "$temporary_root/same-a.after-verify.manifest"
-cmp --silent "$temporary_root/same-a.manifest" "$temporary_root/same-a.after-verify.manifest" || \
+same_a_after_tree=$(snapshot_tree "$same_a")
+[[ $same_a_tree == "$same_a_after_tree" ]] || \
   die "generated service verification changed its source tree"
 
 if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \

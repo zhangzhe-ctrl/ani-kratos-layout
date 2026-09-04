@@ -68,7 +68,7 @@ verify: check-buf
 	git diff --check
 
 vuln: check-govulncheck
-	$(GOVULNCHECK) -show verbose ./...
+	$(GOVULNCHECK) -show version,verbose ./...
 
 sbom: check-cyclonedx
 	./scripts/generate-sbom $(CYCLONEDX_GOMOD)

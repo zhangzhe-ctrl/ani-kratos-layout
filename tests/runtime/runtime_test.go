@@ -85,6 +85,9 @@ func TestRuntimeLifecycle(t *testing.T) {
 	assertGRPCHealth(t, grpcEndpoint.Host)
 	assertGRPCReflectionDisabled(t, grpcEndpoint.Host)
 	assertGRPCMiddleware(t, grpcEndpoint.Host, fixture)
+	readiness.Set(false)
+	assertAdminEndpoint(t, adminEndpoint.Host, "/readyz", http.StatusServiceUnavailable, `"reason":"NOT_READY"`)
+	assertAdminEndpoint(t, adminEndpoint.Host, "/metrics", http.StatusOK, "ani_runtime_ready 0")
 
 	if err := app.Stop(); err != nil {
 		t.Fatalf("Stop() error = %v", err)
@@ -128,6 +131,11 @@ func TestAdminReadinessUsesKratosErrorEncoding(t *testing.T) {
 	adminServer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), `"reason":"NOT_READY"`) {
 		t.Fatalf("GET /readyz = %d %q", recorder.Code, recorder.Body.String())
+	}
+	metricsRecorder := httptest.NewRecorder()
+	adminServer.ServeHTTP(metricsRecorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if metricsRecorder.Code != http.StatusOK || !strings.Contains(metricsRecorder.Body.String(), "ani_runtime_ready 0") {
+		t.Fatalf("GET /metrics before ready = %d %q", metricsRecorder.Code, metricsRecorder.Body.String())
 	}
 }
 

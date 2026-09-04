@@ -6,6 +6,18 @@ die() {
   exit 1
 }
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+  die "sha256sum or shasum is required"
+}
+
 [[ $# -eq 1 ]] || die "usage: scripts/generate-sbom <cyclonedx-gomod>"
 tool_path=$1
 [[ -x $tool_path ]] || die "cyclonedx-gomod is not executable: $tool_path"
@@ -15,13 +27,19 @@ repository_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null)
   die "repository is not a Git checkout"
 repository_commit=$(git -C "$repository_root" rev-parse --verify HEAD 2>/dev/null) || \
   die "repository has no committed revision"
-repository_state=$(git -C "$repository_root" status --porcelain --untracked-files=all) || \
+output_path=$repository_root/docs/scaffold/bom.cdx.json
+repository_state=$(git -C "$repository_root" status --porcelain --untracked-files=all -- \
+  . ':(exclude)docs/scaffold/bom.cdx.json') || \
   die "cannot inspect repository state"
 [[ -z $repository_state ]] || die "repository must be clean before SBOM generation"
 
-output_path=$repository_root/docs/scaffold/bom.cdx.json
 output_dir=$(dirname "$output_path")
 mkdir -p "$output_dir"
+[[ ! -L $repository_root/docs && ! -L $output_dir ]] || \
+  die "SBOM output directory must not traverse a symlink"
+resolved_output_dir=$(cd "$output_dir" && pwd -P)
+[[ $resolved_output_dir == "$repository_root/docs/scaffold" ]] || \
+  die "SBOM output directory escaped the repository"
 
 temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/ani-sbom.XXXXXX")
 staged_output=
@@ -43,11 +61,29 @@ trap 'exit 143' TERM
 export_root=$temporary_root/source
 mkdir -p "$export_root"
 git -C "$repository_root" archive --format=tar "$repository_commit" | tar -xf - -C "$export_root"
+# The SBOM is an output, never an input to its own source identity. A synthetic
+# Git commit gives cyclonedx-gomod a deterministic repository boundary even when
+# TMPDIR itself is nested under another checkout.
+rm -f -- "$export_root/docs/scaffold/bom.cdx.json"
+git -C "$export_root" init --quiet --initial-branch=sbom-source
+git -C "$export_root" add --all
+env \
+  GIT_AUTHOR_NAME='ANI SBOM Source' \
+  GIT_AUTHOR_EMAIL='sbom-source@invalid.example' \
+  GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' \
+  GIT_COMMITTER_NAME='ANI SBOM Source' \
+  GIT_COMMITTER_EMAIL='sbom-source@invalid.example' \
+  GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \
+  git -C "$export_root" -c commit.gpgSign=false commit --quiet \
+    -m 'chore: materialize deterministic SBOM source'
+source_snapshot=$(git -C "$export_root" rev-parse --verify HEAD)
+tool_sha256=$(sha256_file "$tool_path")
 
 raw_output=$temporary_root/bom.cdx.json
 (
   cd "$export_root"
-  "$tool_path" mod -json -noserial -notimestamp -licenses -assert-licenses -output "$raw_output"
+  GOOS=linux GOARCH=amd64 "$tool_path" mod -json -noserial -notimestamp \
+    -licenses -assert-licenses -output "$raw_output"
 )
 
 staged_output=$(mktemp "$output_dir/.bom.cdx.json.XXXXXX")
@@ -55,4 +91,5 @@ cp "$raw_output" "$staged_output"
 chmod 0644 "$staged_output"
 mv -- "$staged_output" "$output_path"
 staged_output=
-printf 'generated %s from commit %s\n' "$output_path" "$repository_commit"
+printf 'generated %s from repository commit %s, source snapshot %s, tool SHA-256 %s\n' \
+  "$output_path" "$repository_commit" "$source_snapshot" "$tool_sha256"
