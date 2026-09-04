@@ -165,7 +165,7 @@ write_manifest "$same_a" "$temporary_root/same-a.after-verify.manifest"
 cmp --silent "$temporary_root/same-a.manifest" "$temporary_root/same-a.after-verify.manifest" || \
   die "generated service verification changed its source tree"
 
-if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$same_a"; then
   die "generated service retains layout identity"
 fi

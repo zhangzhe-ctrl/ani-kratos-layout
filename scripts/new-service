@@ -254,13 +254,13 @@ mkdir -p "$generated/docs/scaffold"
 [[ -f $generated/.github/workflows/ci.yml ]] || die "generated CI workflow is missing"
 normalized_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
 [[ $normalized_module == "$module" ]] || die "generated module path was not normalized"
-if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated"; then
-  rg --line-number --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+  rg --line-number --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
     'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated" >&2
   die "generated service contains template identity"
 fi
-if rg_quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
+if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
   die "generated service contains example Todo content"
 fi
 [[ ! -e $generated/go.work && ! -e $generated/.gitmodules ]] || \
