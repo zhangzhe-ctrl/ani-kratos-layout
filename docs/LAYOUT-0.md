@@ -1,9 +1,10 @@
 # LAYOUT-0 — Kratos Service Layout Freeze
 
-- Status: **CANDIDATE — human acceptance pending**
+- Status: **ACCEPTED — service instantiation authorized**
 - Date: 2026-09-04
 - Decision owner: ANI maintainers
 - Acceptance phrase: `接受 LAYOUT-0 的 L1–L4，开始实例化 ani-notification-service。`
+- Accepted candidate: `e139909c52c2d08f1958ebf2dc75575039732719`
 
 This document freezes the boundary of the reusable ANI service layout before any
 notification-domain implementation starts. It is a build-time scaffold, not a
@@ -130,4 +131,7 @@ the candidate repository and evidence are presented. Instantiation of
 
 > 接受 LAYOUT-0 的 L1–L4，开始实例化 ani-notification-service。
 
-Current result: **not_verified — acceptance has not yet been given**.
+The decision owner supplied that exact phrase on 2026-09-04 for candidate
+`e139909c52c2d08f1958ebf2dc75575039732719`.
+
+Current result: **pass — L1–L4 accepted; service instantiation authorized**.

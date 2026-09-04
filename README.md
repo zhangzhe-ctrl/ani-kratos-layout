@@ -5,7 +5,8 @@ services. It keeps the official Kratos generator as the scaffold engine and
 adds one fail-closed bootstrap interface for the gaps that the pinned CLI does
 not cover.
 
-LAYOUT-0 is a local candidate awaiting its explicit human acceptance gate.
+LAYOUT-0 was accepted for service instantiation on 2026-09-04. The accepted
+candidate is the exact commit identified by `layout-0-candidate`.
 
 ## Generate a service
 

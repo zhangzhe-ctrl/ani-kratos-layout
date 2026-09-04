@@ -4,7 +4,9 @@
 - Candidate identity: local annotated tag `layout-0-candidate` plus the exact SHA
   printed in the handoff; no remote identity is claimed
 - Local technical result: **pass**
-- Human acceptance: **not_verified**
+- Human acceptance: **pass** — the decision owner supplied the exact acceptance
+  phrase on 2026-09-04 for candidate
+  `e139909c52c2d08f1958ebf2dc75575039732719`
 
 ## Result vocabulary
 
@@ -139,7 +141,6 @@ the license for ANI-authored code remain explicit owner decisions.
 
 | Claim | Status | Reason |
 | --- | --- | --- |
-| human acceptance of L1-L4 | not_verified | only the decision owner can send the acceptance phrase |
 | remote repository, push, branch protection, release, hosted Actions | not_verified | no remote write or hosted run is authorized |
 | native Go 1.25.7, race, fuzz, other OS/architecture | not_verified | this evidence used the recorded host and Linux/amd64 target |
 | container image or Kubernetes deployment | not_verified | packaging and deployment are deferred |
@@ -156,6 +157,6 @@ the license for ANI-authored code remain explicit owner decisions.
 - [x] retain deterministic, fail-closed, race, and interruption generation evidence;
 - [x] retain source, independent-process, vulnerability, SBOM, secret, and license-inventory evidence;
 - [x] independent reviews found and the implementation closed all technical blockers;
-- [ ] decision owner accepts L1-L4 with the phrase in `docs/LAYOUT-0.md`.
+- [x] decision owner accepted L1-L4 with the phrase in `docs/LAYOUT-0.md`.
 
-Current result: **local technical pass; human acceptance not_verified**.
+Current result: **local technical pass; human acceptance pass**.
