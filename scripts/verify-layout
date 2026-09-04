@@ -36,6 +36,8 @@ kratos_bin=$1
 buf_bin=$2
 [[ -x $kratos_bin ]] || die "kratos CLI is not executable"
 [[ -x $buf_bin ]] || die "buf is not executable"
+kratos_bin=$(cd "$(dirname "$kratos_bin")" && pwd -P)/$(basename "$kratos_bin")
+buf_bin=$(cd "$(dirname "$buf_bin")" && pwd -P)/$(basename "$buf_bin")
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 candidate_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \

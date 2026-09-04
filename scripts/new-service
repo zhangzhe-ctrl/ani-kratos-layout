@@ -121,6 +121,7 @@ if [[ -z $kratos_bin ]]; then
   [[ $command_status -eq 0 ]] || kratos_bin=
 fi
 [[ -n $kratos_bin && -x $kratos_bin ]] || die "pinned kratos CLI is required"
+kratos_bin=$(cd "$(dirname "$kratos_bin")" && pwd -P)/$(basename "$kratos_bin")
 actual_version=$("$kratos_bin" -v 2>&1) || die "cannot read kratos CLI version"
 [[ $actual_version == "$PINNED_KRATOS_VERSION" ]] || \
   die "kratos CLI version mismatch: got '$actual_version'"
@@ -139,6 +140,7 @@ if [[ ! -x $buf_bin && -z ${BUF_BIN:-} ]]; then
   [[ $command_status -eq 0 ]] || buf_bin=
 fi
 [[ -n $buf_bin && -x $buf_bin ]] || die "pinned buf CLI is required; run 'make tools'"
+buf_bin=$(cd "$(dirname "$buf_bin")" && pwd -P)/$(basename "$buf_bin")
 actual_buf_version=$("$buf_bin" --version 2>&1) || die "cannot read buf CLI version"
 [[ $actual_buf_version == "$PINNED_BUF_VERSION" ]] || \
   die "buf CLI version mismatch: got '$actual_buf_version'"
