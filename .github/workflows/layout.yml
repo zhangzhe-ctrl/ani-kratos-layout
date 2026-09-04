@@ -18,9 +18,15 @@ jobs:
           cache: true
       - name: Install pinned tools
         run: |
-          make tools
+          make tools supply-chain-tools
           GOBIN="$PWD/.tools/bin" go install github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00
       - name: Verify layout source
         run: make verify
       - name: Verify generated repositories
-        run: ./scripts/verify-layout .tools/bin/kratos .tools/bin/buf
+        run: |
+          ./scripts/verify-layout \
+            .tools/bin/kratos \
+            .tools/bin/buf \
+            .tools/bin/govulncheck \
+            .tools/bin/cyclonedx-gomod \
+            .tools/bin/gitleaks

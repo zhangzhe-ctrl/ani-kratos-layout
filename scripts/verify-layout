@@ -31,13 +31,24 @@ rg_quiet() {
   esac
 }
 
-[[ $# -eq 2 ]] || die "usage: scripts/verify-layout <kratos-bin> <buf-bin>"
+[[ $# -eq 5 ]] || \
+  die "usage: scripts/verify-layout <kratos-bin> <buf-bin> <govulncheck-bin> <cyclonedx-gomod-bin> <gitleaks-bin>"
 kratos_bin=$1
 buf_bin=$2
+govulncheck_bin=$3
+cyclonedx_gomod_bin=$4
+gitleaks_bin=$5
 [[ -x $kratos_bin ]] || die "kratos CLI is not executable"
 [[ -x $buf_bin ]] || die "buf is not executable"
+[[ -x $govulncheck_bin ]] || die "govulncheck is not executable"
+[[ -x $cyclonedx_gomod_bin ]] || die "cyclonedx-gomod is not executable"
+[[ -x $gitleaks_bin ]] || die "gitleaks is not executable"
+command -v jq >/dev/null 2>&1 || die "jq is required"
 kratos_bin=$(cd "$(dirname "$kratos_bin")" && pwd -P)/$(basename "$kratos_bin")
 buf_bin=$(cd "$(dirname "$buf_bin")" && pwd -P)/$(basename "$buf_bin")
+govulncheck_bin=$(cd "$(dirname "$govulncheck_bin")" && pwd -P)/$(basename "$govulncheck_bin")
+cyclonedx_gomod_bin=$(cd "$(dirname "$cyclonedx_gomod_bin")" && pwd -P)/$(basename "$cyclonedx_gomod_bin")
+gitleaks_bin=$(cd "$(dirname "$gitleaks_bin")" && pwd -P)/$(basename "$gitleaks_bin")
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 candidate_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
@@ -396,6 +407,52 @@ for edge_index in "${!edge_repositories[@]}"; do
   [[ ${edge_trees[$edge_index]} == "$edge_after_tree" ]] || \
     die "edge-name service verification changed its source tree: ${edge_names[$edge_index]}"
 done
+
+# Exercise the generated repository's documented first-commit supply-chain
+# handoff while the private layout source remains unavailable. The first audit
+# must create only the service-owned BOM; once committed, the same aggregate
+# audit and CI freshness assertions must leave the repository clean.
+env \
+  GIT_AUTHOR_NAME='LAYOUT-0 Verification' \
+  GIT_AUTHOR_EMAIL='layout0-verification@invalid.example' \
+  GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' \
+  GIT_COMMITTER_NAME='LAYOUT-0 Verification' \
+  GIT_COMMITTER_EMAIL='layout0-verification@invalid.example' \
+  GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \
+  git -C "$same_a" -c commit.gpgSign=false commit --quiet \
+    -m 'test: generated source snapshot'
+(
+  cd "$same_a"
+  GOWORK=off make \
+    GOVULNCHECK="$govulncheck_bin" \
+    CYCLONEDX_GOMOD="$cyclonedx_gomod_bin" \
+    GITLEAKS="$gitleaks_bin" \
+    audit
+)
+[[ $(git -C "$same_a" status --porcelain --untracked-files=all) == \
+  '?? docs/scaffold/bom.cdx.json' ]] || \
+  die "first generated-service audit changed more than its untracked BOM"
+git -C "$same_a" add -- docs/scaffold/bom.cdx.json
+env \
+  GIT_AUTHOR_NAME='LAYOUT-0 Verification' \
+  GIT_AUTHOR_EMAIL='layout0-verification@invalid.example' \
+  GIT_AUTHOR_DATE='2000-01-01T00:00:01Z' \
+  GIT_COMMITTER_NAME='LAYOUT-0 Verification' \
+  GIT_COMMITTER_EMAIL='layout0-verification@invalid.example' \
+  GIT_COMMITTER_DATE='2000-01-01T00:00:01Z' \
+  git -C "$same_a" -c commit.gpgSign=false commit --quiet \
+    -m 'test: attach generated runtime SBOM'
+(
+  cd "$same_a"
+  GOWORK=off make \
+    GOVULNCHECK="$govulncheck_bin" \
+    CYCLONEDX_GOMOD="$cyclonedx_gomod_bin" \
+    GITLEAKS="$gitleaks_bin" \
+    audit
+)
+git -C "$same_a" diff --exit-code -- docs/scaffold/bom.cdx.json
+[[ -z $(git -C "$same_a" status --porcelain --untracked-files=all) ]] || \
+  die "second generated-service audit left source or BOM drift"
 
 if rg_quiet --hidden --glob '!**/.git/**' --glob '!**/docs/scaffold/provenance.md' \
   'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$same_a"; then
