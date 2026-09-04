@@ -1,31 +1,18 @@
 package server
 
 import (
-	v1 "ani-kratos-layout-layout0/api/todo/v1"
-	"ani-kratos-layout-layout0/internal/conf"
-	"ani-kratos-layout-layout0/internal/service"
+	"github.com/go-kratos/kratos/v3/middleware"
+	kratosgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 
-	"github.com/go-kratos/kratos/v3/middleware/recovery"
-	"github.com/go-kratos/kratos/v3/transport/grpc"
+	conf "github.com/zhangzhe-ctrl/ani-kratos-layout/internal/conf/v1"
 )
 
-// NewGRPCServer new a gRPC server.
-func NewGRPCServer(c *conf.Server, todo *service.TodoService) *grpc.Server {
-	var opts = []grpc.ServerOption{
-		grpc.Middleware(
-			recovery.Recovery(),
-		),
-	}
-	if c.Grpc.Network != "" {
-		opts = append(opts, grpc.Network(c.Grpc.Network))
-	}
-	if c.Grpc.Addr != "" {
-		opts = append(opts, grpc.Address(c.Grpc.Addr))
-	}
-	if c.Grpc.Timeout != nil {
-		opts = append(opts, grpc.Timeout(c.Grpc.Timeout.AsDuration()))
-	}
-	srv := grpc.NewServer(opts...)
-	v1.RegisterTodoServiceServer(srv, todo)
-	return srv
+func NewGRPCServer(c *conf.Server_GRPC, middlewares ...middleware.Middleware) *kratosgrpc.Server {
+	return kratosgrpc.NewServer(
+		kratosgrpc.Network(c.Network),
+		kratosgrpc.Address(c.Addr),
+		kratosgrpc.Timeout(c.Timeout.AsDuration()),
+		kratosgrpc.Middleware(middlewares...),
+		kratosgrpc.DisableReflection(),
+	)
 }

@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly PINNED_KRATOS_VERSION="kratos version v3.0.0"
+readonly PINNED_KRATOS_MODULE="github.com/go-kratos/kratos/cmd/kratos/v3@v3.0.0-20260626125723-668db92c2c00"
+readonly UPSTREAM_LAYOUT_TAG="v3.0.0"
+readonly UPSTREAM_LAYOUT_COMMIT="94dbfcc4264a6be8e7b6c4929923c1e1f738b980"
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/new-service <module-path> [--parent <existing-directory>]
+
+Example:
+  scripts/new-service github.com/zhangzhe-ctrl/ani-notification-service \
+    --parent /home/chabking/workspace
+EOF
+}
+
+die() {
+  printf 'new-service: %s\n' "$*" >&2
+  exit 1
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+  die "sha256sum or shasum is required"
+}
+
+[[ $# -gt 0 ]] || { usage >&2; exit 2; }
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+module=$1
+shift
+parent=$PWD
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --parent)
+      [[ $# -ge 2 ]] || die "--parent requires a value"
+      parent=$2
+      shift 2
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+[[ $module =~ ^[A-Za-z0-9][A-Za-z0-9.-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+$ ]] || \
+  die "module path must be a fully-qualified Go module path"
+[[ $module != *".."* ]] || die "module path must not contain '..'"
+service=${module##*/}
+[[ $service =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
+  die "service name must contain only lowercase letters, digits, and hyphens"
+
+command -v git >/dev/null 2>&1 || die "git is required"
+command -v go >/dev/null 2>&1 || die "go is required"
+command -v rg >/dev/null 2>&1 || die "rg is required"
+[[ -d $parent ]] || die "parent directory does not exist: $parent"
+parent=$(cd "$parent" && pwd -P)
+target=$parent/$service
+[[ ! -e $target && ! -L $target ]] || die "target already exists: $target"
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+layout_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
+  die "layout checkout is not a Git repository"
+layout_branch=$(git -C "$layout_root" symbolic-ref --quiet --short HEAD 2>/dev/null) || \
+  die "layout checkout must be on a symbolic branch"
+layout_commit=$(git -C "$layout_root" rev-parse --verify HEAD 2>/dev/null) || \
+  die "layout checkout has no commit"
+[[ -z $(git -C "$layout_root" status --porcelain --untracked-files=all) ]] || \
+  die "layout checkout must be clean"
+
+kratos_bin=${KRATOS_BIN:-}
+if [[ -z $kratos_bin ]]; then
+  kratos_bin=$(command -v kratos 2>/dev/null || true)
+fi
+[[ -n $kratos_bin && -x $kratos_bin ]] || die "pinned kratos CLI is required"
+actual_version=$("$kratos_bin" -v 2>&1) || die "cannot read kratos CLI version"
+[[ $actual_version == "$PINNED_KRATOS_VERSION" ]] || \
+  die "kratos CLI version mismatch: got '$actual_version'"
+actual_module=$(go version -m "$kratos_bin" | awk '$1 == "mod" {print $2 "@" $3; exit}')
+[[ $actual_module == "$PINNED_KRATOS_MODULE" ]] || \
+  die "kratos CLI module mismatch: got '$actual_module'"
+kratos_sha256=$(sha256_file "$kratos_bin")
+
+scratch=$(mktemp -d "$parent/.${service}.ani-layout.XXXXXX")
+cleanup() {
+  [[ -n ${scratch:-} && -d $scratch ]] && rm -rf -- "$scratch"
+}
+trap cleanup EXIT
+generated=$scratch/$service
+generator_log=$scratch/kratos-new.log
+
+set +e
+"$kratos_bin" new "$generated" \
+  --repo "file://$layout_root" \
+  --timeout 120s >"$generator_log" 2>&1
+generator_status=$?
+set -e
+if [[ $generator_status -ne 0 ]] || rg --quiet '(^|[[:space:]])ERROR([:[:space:]]|$)' "$generator_log"; then
+  sed -n '1,200p' "$generator_log" >&2
+  die "official kratos generator failed"
+fi
+[[ -f $generated/go.mod ]] || die "generator did not create go.mod"
+
+generated_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
+[[ $generated_module == "$service" ]] || \
+  die "unexpected module emitted by kratos CLI: $generated_module"
+
+# The pinned CLI intentionally excludes .github. Restore the template CI before
+# removing layout-only material.
+cp -R "$layout_root/.github" "$generated/.github"
+cp "$generated/templates/service/README.md" "$generated/README.md"
+cp "$generated/templates/service/AGENTS.md" "$generated/AGENTS.md"
+rm -rf -- "$generated/templates" "$generated/scripts" "$generated/docs/scaffold"
+rm -f -- "$generated/docs/LAYOUT-0.md"
+
+(cd "$generated" && go mod edit -module "$module")
+while IFS= read -r -d '' file; do
+  sed -i "s|$service/|$module/|g" "$file"
+done < <(rg --files-with-matches --null --fixed-strings "$service/" "$generated" \
+  --glob '*.go' --glob '*.proto' || true)
+while IFS= read -r -d '' file; do
+  sed -i "s|ani-service-template|$service|g" "$file"
+done < <(rg --files-with-matches --null --hidden --fixed-strings 'ani-service-template' "$generated" \
+  --glob '!.git/**' || true)
+while IFS= read -r -d '' file; do
+  sed -i "s|__SERVICE_MODULE__|$module|g" "$file"
+done < <(rg --files-with-matches --null --hidden --fixed-strings '__SERVICE_MODULE__' "$generated" \
+  --glob '!.git/**' || true)
+
+mkdir -p "$generated/docs/scaffold"
+{
+  printf '# Scaffold provenance\n\n'
+  printf -- '- target module: `%s`\n' "$module"
+  printf -- '- service name: `%s`\n' "$service"
+  printf -- '- layout module: `github.com/zhangzhe-ctrl/ani-kratos-layout`\n'
+  printf -- '- layout branch: `%s`\n' "$layout_branch"
+  printf -- '- layout commit: `%s`\n' "$layout_commit"
+  printf -- '- upstream layout: `github.com/go-kratos/kratos-layout@%s`\n' "$UPSTREAM_LAYOUT_TAG"
+  printf -- '- upstream layout commit: `%s`\n' "$UPSTREAM_LAYOUT_COMMIT"
+  printf -- '- Kratos CLI version: `%s`\n' "$PINNED_KRATOS_VERSION"
+  printf -- '- Kratos CLI module: `%s`\n' "$PINNED_KRATOS_MODULE"
+  printf -- '- Kratos CLI binary SHA-256: `%s`\n' "$kratos_sha256"
+  printf '\nNo timestamp is recorded so equal inputs remain reproducible.\n'
+} >"$generated/docs/scaffold/provenance.md"
+
+[[ -f $generated/cmd/$service/main.go ]] || die "generated command was not renamed"
+[[ -f $generated/.github/workflows/ci.yml ]] || die "generated CI workflow is missing"
+[[ $(awk '$1 == "module" {print $2; exit}' "$generated/go.mod") == "$module" ]] || \
+  die "generated module path was not normalized"
+if rg --quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' \
+  'github\.com/zhangzhe-ctrl/ani-kratos-layout|ani-service-template|__SERVICE_MODULE__' "$generated"; then
+  die "generated service contains template identity"
+fi
+if rg --quiet --hidden --glob '!.git/**' --glob '!docs/scaffold/provenance.md' -i '\btodo\b' "$generated"; then
+  die "generated service contains example Todo content"
+fi
+[[ ! -e $generated/go.work && ! -e $generated/.gitmodules ]] || \
+  die "generated service contains a workspace or submodule binding"
+if rg --quiet '^[[:space:]]*replace([[:space:](]|$)' "$generated/go.mod"; then
+  die "generated go.mod contains a replace directive"
+fi
+
+git -C "$generated" init --quiet --initial-branch=main
+[[ -z $(git -C "$generated" remote) ]] || die "generated repository unexpectedly has a remote"
+[[ ! -e $target && ! -L $target ]] || die "target appeared during generation: $target"
+mv -- "$generated" "$target"
+printf 'created %s at %s\n' "$module" "$target"

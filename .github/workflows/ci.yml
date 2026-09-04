@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install pinned tools
+        run: make tools supply-chain-tools
+      - name: Verify
+        run: make verify
+      - name: Vulnerability scan
+        run: make vuln
