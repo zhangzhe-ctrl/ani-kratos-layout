@@ -114,8 +114,8 @@ All six `api/todo/v1/*` files are deleted. LAYOUT-0 defines no business API.
 
 The final gate lists `git diff --name-status` from the base to the candidate,
 checks every active source/build path for removed families, requires exactly
-`README.md` and `doc.go` in each empty extension seam, and generates two
-equal plus one distinct service.
+`README.md` and `doc.go` in each empty extension seam, and generates two equal,
+one distinct, and one collision-prone service.
 
 Generated services contain neither `templates/` nor layout evidence. They
 receive a newly initialized Git repository with no remote, no submodule,

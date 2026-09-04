@@ -64,7 +64,7 @@ scripts/verify-layout /home/chabking/go/bin/kratos .tools/bin/buf
 | V14 | two equal module inputs produced equal Git tree IDs, including file modes and object types | pass |
 | V15 | a second exact-form ANI module produced the expected module, imports, Proto option, command directory, README, CI, and provenance; collision-prone legal service name `go` preserved `go/parser` and `go/token` while normalizing owned imports | pass |
 | V16 | the private layout checkout was renamed out of reach before the generated service ran `make verify`; it still passed | pass |
-| V17 | generated repositories retained service README/AGENTS/runtime docs/CI/provenance and omitted layout-only wrapper, templates, evidence, and workflow | pass |
+| V17 | generated repositories retained service README/AGENTS/runtime docs/CI/provenance and supply-chain verification, while omitting the layout-only wrapper, templates, evidence, and workflow | pass |
 
 The gate intentionally regenerates Protobuf after module normalization. This
 prevents a text replacement from corrupting the encoded raw descriptor while
@@ -124,6 +124,7 @@ using the recorded CycloneDX binary and Linux/amd64 target.
 | V51 | [bom.cdx.json](bom.cdx.json) is CycloneDX 1.6, timestamp/serial-free, Linux/amd64 runtime scope, 34 third-party components; identical reruns use a deterministic synthetic source commit that excludes the BOM itself | pass |
 | V52 | pinned Gitleaks `v8.30.1` ran `gitleaks git --no-banner --no-color --redact --log-opts="--all" .` with its embedded detector set over every local Git ref and commit; it reported `no leaks found` | pass |
 | V53 | `scripts/verify-supply-chain` fixed the upstream notice SHA-256, required license evidence for all 34 runtime components, and proved the counts in [license-review.md](license-review.md) match the BOM | pass |
+| V54 | a newly generated service was committed, passed `make audit`, committed its own BOM, then passed the same audit again with zero BOM drift | pass |
 
 CycloneDX license detection is evidence, not a legal assertion. Test-only
 dependencies are not included in this runtime SBOM. Publication packaging and

@@ -168,6 +168,12 @@ rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service' \
 [[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
 [[ ! -e $other/scripts/new-service && ! -e $other/scripts/verify-layout ]] || \
   die "layout-only scripts leaked into service"
+[[ -x $other/scripts/verify-supply-chain ]] || \
+  die "generated service supply-chain verification is missing"
+rg_quiet --fixed-strings 'make audit' "$other/.github/workflows/ci.yml" || \
+  die "generated service CI does not run the supply-chain audit"
+rg_quiet --fixed-strings 'fetch-depth: 0' "$other/.github/workflows/ci.yml" || \
+  die "generated service CI does not fetch history for secret scanning"
 
 [[ $(awk '$1 == "module" {print $2; exit}' "$collision/go.mod") == \
   "github.com/zhangzhe-ctrl/go" ]] || die "collision-prone module was not materialized"
