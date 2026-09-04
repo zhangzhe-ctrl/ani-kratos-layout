@@ -25,6 +25,7 @@ behavior. A design statement is not execution evidence.
 | Buf | `v1.60.0`; module `github.com/bufbuild/buf@v1.60.0`; SHA-256 `d931e6035fa4a101f6da4aeeeefcf72ea9478e08b6cc9a707d0e407bd5caee51` |
 | govulncheck | `v1.7.0`; SHA-256 `cc939c9c2174c420e7c41f08d9e5d821ada9521a83988ddac9e5dc55c0b62a9e` |
 | CycloneDX GoMod | `v1.12.0`; SHA-256 `437970c07caaf3f254f19a226f2fd72d78b37ef1927e31d806d0eea2c65c48e2` |
+| Gitleaks | module `github.com/zricethezav/gitleaks/v8@v8.30.1`; SHA-256 `301bf2649b8d93f0db33df6bfcb0aeb9b03783a13a3bcba34c8fffe42aed6a3b` |
 
 Kratos and Buf enforce source module plus version. Binary hashes are retained as
 per-execution provenance because a valid binary hash changes with Go builder,
@@ -109,8 +110,7 @@ cleanup.
 ## Supply-chain gates
 
 ```bash
-make vuln
-make sbom
+make audit
 make sbom
 ```
 
@@ -122,8 +122,8 @@ using the recorded CycloneDX binary and Linux/amd64 target.
 | --- | --- | --- |
 | V50 | govulncheck DB `https://vuln.go.dev`, updated `2026-09-02 19:12:04 +0000 UTC`; 7 packages and 35 modules/standard library scanned; `No vulnerabilities found.` | pass |
 | V51 | [bom.cdx.json](bom.cdx.json) is CycloneDX 1.6, timestamp/serial-free, Linux/amd64 runtime scope, 34 third-party components; identical reruns use a deterministic synthetic source commit that excludes the BOM itself | pass |
-| V52 | tracked files and commits introduced since the official baseline were scanned for private-key blocks and common GitHub, AWS, Slack, bearer, password, and credential token forms; no credential material was found | pass |
-| V53 | upstream notice is retained without choosing an ANI project license; all 34 runtime components have heuristic license evidence and their obligations/boundaries are recorded in [license-review.md](license-review.md) | pass |
+| V52 | pinned Gitleaks `v8.30.1` ran `gitleaks git --no-banner --no-color --redact --log-opts="--all" .` with its embedded detector set over every local Git ref and commit; it reported `no leaks found` | pass |
+| V53 | `scripts/verify-supply-chain` fixed the upstream notice SHA-256, required license evidence for all 34 runtime components, and proved the counts in [license-review.md](license-review.md) match the BOM | pass |
 
 CycloneDX license detection is evidence, not a legal assertion. Test-only
 dependencies are not included in this runtime SBOM. Publication packaging and

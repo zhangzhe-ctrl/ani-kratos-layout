@@ -54,3 +54,7 @@ belong to a real vertical slice and must not be enabled by template switches.
 
 See `docs/LAYOUT-0.md` for the frozen decision and `docs/runtime.md` for the
 runtime contract.
+
+From a committed candidate, `make supply-chain-tools && make audit` runs the
+pinned vulnerability and secret scanners, regenerates the runtime SBOM, and
+checks its license evidence plus the retained upstream notice.

@@ -17,9 +17,10 @@ make verify
 go run ./cmd/ani-service-template -conf ./configs
 ```
 
-After the initial source commit, run `make supply-chain-tools`, `make vuln`, and
-`make sbom`; review and commit `docs/scaffold/bom.cdx.json`. CI deliberately
-fails when that runtime SBOM is missing or stale.
+After the initial source commit, run `make supply-chain-tools` and `make audit`;
+review and commit `docs/scaffold/bom.cdx.json`. CI deliberately fails when that
+runtime SBOM is missing or stale and reruns the vulnerability, secret,
+notice-integrity, and license-evidence gates.
 
 The committed listeners are loopback-only local defaults. Override them through
 the typed `ANI` environment configuration when the deployment design is added.

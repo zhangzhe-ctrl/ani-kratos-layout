@@ -105,6 +105,7 @@ All six `api/todo/v1/*` files are deleted. LAYOUT-0 defines no business API.
 | `scripts/new-service` | single layout bootstrap interface | omit |
 | `scripts/verify-layout` | layout-only black-box/negative gate | omit |
 | `scripts/verify-source` | generated-code and format gate | retain |
+| `scripts/verify-supply-chain` | BOM/license-evidence and upstream-notice integrity gate | retain |
 | `templates/service/AGENTS.md` | generated root instructions | materialize as `AGENTS.md`, then omit templates |
 | `templates/service/README.md` | generated root README | materialize as `README.md`, then omit templates |
 | `tests/runtime/runtime_test.go` | transport/middleware/lifecycle integration fixture | retain |

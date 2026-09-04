@@ -7,6 +7,7 @@ readonly PINNED_BUF_VERSION="1.60.0"
 readonly PINNED_BUF_MODULE="github.com/bufbuild/buf@v1.60.0"
 readonly UPSTREAM_LAYOUT_TAG="v3.0.0"
 readonly UPSTREAM_LAYOUT_COMMIT="94dbfcc4264a6be8e7b6c4929923c1e1f738b980"
+readonly UPSTREAM_NOTICE_SHA256="3b44929bdd575a570c42165d4fd4eac57a5055745d2ecf3f121aa6a084cf9230"
 readonly MODULE_PREFIX="github.com/zhangzhe-ctrl/"
 readonly GENERATOR_BRANCH="layout-input"
 
@@ -292,6 +293,8 @@ mkdir -p "$generated/docs/scaffold"
 [[ -f $generated/.github/workflows/ci.yml ]] || die "generated CI workflow is missing"
 [[ -f $generated/THIRD_PARTY_NOTICES.go-kratos-layout.txt ]] || \
   die "upstream Kratos layout notice is missing"
+[[ $(sha256_file "$generated/THIRD_PARTY_NOTICES.go-kratos-layout.txt") == \
+  "$UPSTREAM_NOTICE_SHA256" ]] || die "upstream Kratos layout notice was modified"
 [[ ! -e $generated/LICENSE ]] || die "generated service must choose its own project license"
 normalized_module=$(awk '$1 == "module" {print $2; exit}' "$generated/go.mod")
 [[ $normalized_module == "$module" ]] || die "generated module path was not normalized"

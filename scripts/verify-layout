@@ -161,6 +161,9 @@ rg_quiet --fixed-strings 'github.com/zhangzhe-ctrl/layout0-other-service' \
 [[ -f $other/.github/workflows/ci.yml ]] || die "service CI is missing"
 [[ -f $other/THIRD_PARTY_NOTICES.go-kratos-layout.txt ]] || \
   die "service upstream notice is missing"
+[[ $(sha256_file "$other/THIRD_PARTY_NOTICES.go-kratos-layout.txt") == \
+  "3b44929bdd575a570c42165d4fd4eac57a5055745d2ecf3f121aa6a084cf9230" ]] || \
+  die "service upstream notice differs from the frozen source"
 [[ ! -e $other/LICENSE ]] || die "service unexpectedly inherited a project license"
 [[ ! -e $other/.github/workflows/layout.yml ]] || die "layout-only CI leaked into service"
 [[ ! -e $other/scripts/new-service && ! -e $other/scripts/verify-layout ]] || \

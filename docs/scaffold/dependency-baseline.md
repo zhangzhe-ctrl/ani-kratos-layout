@@ -60,6 +60,7 @@ review.
 | `protoc-gen-go` | `google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11` in `buf.gen.yaml` | executed through pinned Go module | pass |
 | govulncheck | `golang.org/x/vuln@v1.7.0` | `cc939c9c2174c420e7c41f08d9e5d821ada9521a83988ddac9e5dc55c0b62a9e` | pass |
 | CycloneDX GoMod | `github.com/CycloneDX/cyclonedx-gomod@v1.12.0` | `437970c07caaf3f254f19a226f2fd72d78b37ef1927e31d806d0eea2c65c48e2` | pass |
+| Gitleaks | `github.com/zricethezav/gitleaks/v8@v8.30.1` | `301bf2649b8d93f0db33df6bfcb0aeb9b03783a13a3bcba34c8fffe42aed6a3b` | pass |
 
 Module path plus version is the portable executable pin. Binary hashes are
 per-execution evidence, not a false promise that separately built binaries on

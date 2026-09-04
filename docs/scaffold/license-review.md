@@ -22,6 +22,11 @@ No copyleft license was detected in this runtime inventory. That observation is
 bounded to the exact modules and tool recorded in the SBOM; it is not a policy
 that rejects or approves future dependencies.
 
+`scripts/verify-supply-chain` and `make audit` fail when the notice hash changes,
+any runtime component loses detected license evidence, or this table's counts
+drift from the committed BOM. CI runs that gate; legal interpretation and
+distribution approval remain human decisions.
+
 ## Recorded obligations
 
 - MIT and BSD distributions retain the applicable copyright and license text.
