@@ -64,7 +64,9 @@ review.
 
 Module path plus version is the portable executable pin. Binary hashes are
 per-execution evidence, not a false promise that separately built binaries on
-other platforms have identical bytes.
+other platforms have identical bytes. Generator executable hashes are logged
+during SBOM generation but removed from committed `metadata.tools`; dependency
+content hashes remain intact.
 
 ## Verification boundary
 

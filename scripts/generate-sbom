@@ -21,6 +21,7 @@ sha256_file() {
 [[ $# -eq 1 ]] || die "usage: scripts/generate-sbom <cyclonedx-gomod>"
 tool_path=$1
 [[ -x $tool_path ]] || die "cyclonedx-gomod is not executable: $tool_path"
+command -v jq >/dev/null 2>&1 || die "jq is required"
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repository_root=$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null) || \
@@ -87,7 +88,10 @@ raw_output=$temporary_root/bom.cdx.json
 )
 
 staged_output=$(mktemp "$output_dir/.bom.cdx.json.XXXXXX")
-cp "$raw_output" "$staged_output"
+# cyclonedx-gomod records hashes of its own executable. Those bytes vary with
+# the Go toolchain and build flags even when the enforced module and version are
+# identical, so they are execution evidence rather than portable SBOM identity.
+jq 'del(.metadata.tools[]?.hashes)' "$raw_output" >"$staged_output"
 chmod 0644 "$staged_output"
 mv -- "$staged_output" "$output_path"
 staged_output=

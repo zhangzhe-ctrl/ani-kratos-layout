@@ -40,6 +40,9 @@ jq -e '
   .specVersion == "1.6" and
   (.serialNumber == null) and
   (.metadata.timestamp == null) and
+  ((.metadata.tools | type) == "array") and
+  ((.metadata.tools | length) > 0) and
+  ([.metadata.tools[] | select(has("hashes"))] | length == 0) and
   ((.components | type) == "array") and
   ((.components | length) > 0) and
   ((.dependencies | type) == "array") and
