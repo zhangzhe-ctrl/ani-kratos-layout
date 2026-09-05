@@ -13,7 +13,7 @@ behavior are not copied.
 
 | Module or directive | Frozen value | Verification |
 | --- | --- | --- |
-| Go directive | `1.25.7` | `go.mod` and generated repository |
+| Go directive | `1.25.13` | `go.mod` and generated repository |
 | `github.com/go-kratos/kratos/v3` | `v3.0.0` | direct graph gate |
 | `github.com/go-kratos/kratos/contrib/otel/v3` | `v3.0.0-20260515082355-1ddb58e407c5` | direct graph gate |
 | `github.com/prometheus/client_golang` | `v1.24.1` | direct graph gate |
@@ -68,7 +68,7 @@ other platforms have identical bytes.
 
 ## Verification boundary
 
-- Native execution with the declared Go `1.25.7` toolchain is
+- Native execution with the declared Go `1.25.13` toolchain is
   **not_verified**; the host used the newer toolchain recorded above.
 - The committed SBOM is runtime-only and targets Linux/amd64. Test-only and
   alternate-platform dependency inventories are **not_verified**.
